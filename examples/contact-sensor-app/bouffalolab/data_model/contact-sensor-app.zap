@@ -1,6 +1,6 @@
 {
   "fileFormat": 2,
-  "featureLevel": 104,
+  "featureLevel": 103,
   "creator": "zap",
   "keyValuePairs": [
     {
@@ -41,16 +41,14 @@
         "code": 22,
         "profileId": 259,
         "label": "MA-rootdevice",
-        "name": "MA-rootdevice",
-        "deviceTypeOrder": 0
+        "name": "MA-rootdevice"
       },
       "deviceTypes": [
         {
           "code": 22,
           "profileId": 259,
           "label": "MA-rootdevice",
-          "name": "MA-rootdevice",
-          "deviceTypeOrder": 0
+          "name": "MA-rootdevice"
         }
       ],
       "deviceVersions": [
@@ -3973,16 +3971,14 @@
         "code": 21,
         "profileId": 259,
         "label": "MA-contactsensor",
-        "name": "MA-contactsensor",
-        "deviceTypeOrder": 0
+        "name": "MA-contactsensor"
       },
       "deviceTypes": [
         {
           "code": 21,
           "profileId": 259,
           "label": "MA-contactsensor",
-          "name": "MA-contactsensor",
-          "deviceTypeOrder": 0
+          "name": "MA-contactsensor"
         }
       ],
       "deviceVersions": [
