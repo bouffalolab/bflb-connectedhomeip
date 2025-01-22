@@ -104,6 +104,7 @@ class BouffalolabBuilder(GnBuilder):
                  enable_littlefs: bool = False,
                  enable_pds: bool = False,
                  enable_debug_coredump: bool = False,
+                 enable_lwip_pbuf_ram: bool = True
                  ):
 
         if 'BL602' == module_type:
@@ -250,6 +251,9 @@ class BouffalolabBuilder(GnBuilder):
 
         self.argsOpt.append(f"chip_generate_link_map_file=true")
 
+        if enable_lwip_pbuf_ram:
+            self.argsOpt.append(f"enable_lwip_pbuf_ram=true")
+
         try:
             self.argsOpt.append('bouffalolab_sdk_root="%s"' % os.environ['BOUFFALOLAB_SDK_ROOT'])
         except KeyError as err:
@@ -285,16 +289,14 @@ class BouffalolabBuilder(GnBuilder):
 
     def PostBuildCommand(self):
 
-        bouffalo_sdk_chips = ["bl616"]
-        abs_path_fw = os.path.join(self.output_dir, self.app.AppNamePrefix(self.chip_name) + ".bin")
-
-        if self.chip_name not in bouffalo_sdk_chips:
-            abs_path_fw_raw = os.path.join(self.output_dir, self.app.AppNamePrefix(self.chip_name) + ".raw")
+        if self.chip_name in ["bl616"]:
+            abs_path_fw = os.path.join(self.output_dir, self.app.AppNamePrefix(self.chip_name) + ".raw")
+        else:
+            abs_path_fw = os.path.join(self.output_dir, self.app.AppNamePrefix(self.chip_name) + ".bin")
 
         if os.path.isfile(abs_path_fw):
             target_dir = self.output_dir.replace(self.chip_dir, "").strip("/")
 
-            abs_path_fw_bin = os.path.join(self.output_dir, self.app.AppNamePrefix(self.chip_name) + ".bin")
             path_fw = os.path.join(target_dir, self.app.AppNamePrefix(self.chip_name) + ".bin")
             path_flash_script = os.path.join(target_dir, self.app.AppNamePrefix(self.chip_name) + ".flash.py")
 

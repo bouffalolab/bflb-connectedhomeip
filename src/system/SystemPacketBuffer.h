@@ -172,6 +172,8 @@ public:
         return kMaxSizeWithoutReserve;
 #elif CHIP_SYSTEM_PACKETBUFFER_FROM_CHIP_HEAP
         return this->alloc_size;
+#elif CHIP_SYSTEM_CONFIG_PACKETBUFFER_LWIP_PBUF_RAM
+        return LWIP_MEM_ALIGN_SIZE(memp_sizes[this->pool]) - kStructureSize;
 #elif CHIP_SYSTEM_PACKETBUFFER_FROM_LWIP_CUSTOM_POOL
         // Temporary workaround for custom pbufs by assuming size to be PBUF_POOL_BUFSIZE
         if (this->flags & PBUF_FLAG_IS_CUSTOM)

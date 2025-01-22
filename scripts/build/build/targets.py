@@ -731,6 +731,7 @@ def BuildBouffalolabTarget():
     target.AppendModifier('mot', use_matter_openthread=True).OnlyIfRe('-(thread)')
     target.AppendModifier('memmonitor', enable_heap_monitoring=True)
     target.AppendModifier('coredump', enable_debug_coredump=True)
+    target.AppendModifier('pbuf-pool', enable_lwip_pbuf_ram=False).OnlyIfRe('-(bl602dk)')
 
     return target
 
