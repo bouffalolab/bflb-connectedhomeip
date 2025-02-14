@@ -177,6 +177,7 @@ void UnlockOpenThreadTask(void)
 }
 #endif
 
+#if CONFIG_APP_ADVERTISE_COMMISSIONABLE_ON_LAST_FABRIC_REMOVAL
 class AppFabricTableDelegate : public FabricTable::Delegate
 {
     void OnFabricRemoved(const FabricTable & fabricTable, FabricIndex fabricIndex)
@@ -205,6 +206,7 @@ class AppFabricTableDelegate : public FabricTable::Delegate
         }
     }
 };
+#endif
 
 CHIP_ERROR PlatformManagerImpl::PlatformInit(void)
 {
@@ -293,8 +295,10 @@ CHIP_ERROR PlatformManagerImpl::PlatformInit(void)
 
     gExampleDeviceInfoProvider.SetStorageDelegate(&chip::Server::GetInstance().GetPersistentStorage());
 
+#if CONFIG_APP_ADVERTISE_COMMISSIONABLE_ON_LAST_FABRIC_REMOVAL
     static AppFabricTableDelegate sAppFabricDelegate;
     chip::Server::GetInstance().GetFabricTable().AddFabricDelegate(&sAppFabricDelegate);
+#endif
 
     chip::DeviceLayer::PlatformMgr().UnlockChipStack();
 

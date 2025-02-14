@@ -259,7 +259,7 @@ def gen_test_certs(chip_cert: str,
         if paa_cert:
             cmd += ["--authorized-paa-cert", paa_cert]
 
-        log.info("Generate CD: {}".format(shlex.join(cmd)))
+        log.info("Generate CD: {}".format(" ".join(cmd)))
         subprocess.run(cmd)
 
     pai_vendor_id, pai_product_id, pai_issue_date, pai_expire_date = parse_cert_file(pai_cert)
