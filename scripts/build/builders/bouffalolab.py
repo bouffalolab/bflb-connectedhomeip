@@ -104,6 +104,7 @@ class BouffalolabBuilder(GnBuilder):
                  enable_littlefs: bool = False,
                  enable_pds: bool = False,
                  enable_debug_coredump: bool = False,
+                 enable_lwip_pbuf_ram: bool = True
                  ):
 
         if 'BL602' == module_type:
@@ -249,6 +250,9 @@ class BouffalolabBuilder(GnBuilder):
             self.argsOpt.append(f"coredump_binary_id={int(time.time())}")
 
         self.argsOpt.append(f"chip_generate_link_map_file=true")
+
+        if enable_lwip_pbuf_ram:
+            self.argsOpt.append(f"enable_lwip_pbuf_ram=true")
 
         try:
             self.argsOpt.append('bouffalolab_sdk_root="%s"' % os.environ['BOUFFALOLAB_SDK_ROOT'])
