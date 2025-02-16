@@ -20831,6 +20831,7 @@ public:
 | * TCMinRequiredVersion                                              | 0x0006 |
 | * TCAcknowledgements                                                | 0x0007 |
 | * TCAcknowledgementsRequired                                        | 0x0008 |
+| * TCUpdateDeadline                                                  | 0x0009 |
 | * GeneratedCommandList                                              | 0xFFF8 |
 | * AcceptedCommandList                                               | 0xFFF9 |
 | * EventList                                                         | 0xFFFA |
@@ -21847,6 +21848,91 @@ public:
             subscriptionEstablished:^() { mSubscriptionEstablished = YES; }
             reportHandler:^(NSNumber * _Nullable value, NSError * _Nullable error) {
                 NSLog(@"GeneralCommissioning.TCAcknowledgementsRequired response %@", [value description]);
+                if (error == nil) {
+                    RemoteDataModelLogger::LogAttributeAsJSON(@(endpointId), @(clusterId), @(attributeId), value);
+                } else {
+                    RemoteDataModelLogger::LogAttributeErrorAsJSON(@(endpointId), @(clusterId), @(attributeId), error);
+                }
+                SetCommandExitStatus(error);
+            }];
+
+        return CHIP_NO_ERROR;
+    }
+};
+
+#endif // MTR_ENABLE_PROVISIONAL
+#if MTR_ENABLE_PROVISIONAL
+
+/*
+ * Attribute TCUpdateDeadline
+ */
+class ReadGeneralCommissioningTCUpdateDeadline : public ReadAttribute {
+public:
+    ReadGeneralCommissioningTCUpdateDeadline()
+        : ReadAttribute("tcupdate-deadline")
+    {
+    }
+
+    ~ReadGeneralCommissioningTCUpdateDeadline()
+    {
+    }
+
+    CHIP_ERROR SendCommand(MTRBaseDevice * device, chip::EndpointId endpointId) override
+    {
+        constexpr chip::ClusterId clusterId = chip::app::Clusters::GeneralCommissioning::Id;
+        constexpr chip::AttributeId attributeId = chip::app::Clusters::GeneralCommissioning::Attributes::TCUpdateDeadline::Id;
+
+        ChipLogProgress(chipTool, "Sending cluster (0x%08" PRIX32 ") ReadAttribute (0x%08" PRIX32 ") on endpoint %u", endpointId, clusterId, attributeId);
+
+        dispatch_queue_t callbackQueue = dispatch_queue_create("com.chip.command", DISPATCH_QUEUE_SERIAL_WITH_AUTORELEASE_POOL);
+        __auto_type * cluster = [[MTRBaseClusterGeneralCommissioning alloc] initWithDevice:device endpointID:@(endpointId) queue:callbackQueue];
+        [cluster readAttributeTCUpdateDeadlineWithCompletion:^(NSNumber * _Nullable value, NSError * _Nullable error) {
+            NSLog(@"GeneralCommissioning.TCUpdateDeadline response %@", [value description]);
+            if (error == nil) {
+                RemoteDataModelLogger::LogAttributeAsJSON(@(endpointId), @(clusterId), @(attributeId), value);
+            } else {
+                LogNSError("GeneralCommissioning TCUpdateDeadline read Error", error);
+                RemoteDataModelLogger::LogAttributeErrorAsJSON(@(endpointId), @(clusterId), @(attributeId), error);
+            }
+            SetCommandExitStatus(error);
+        }];
+        return CHIP_NO_ERROR;
+    }
+};
+
+class SubscribeAttributeGeneralCommissioningTCUpdateDeadline : public SubscribeAttribute {
+public:
+    SubscribeAttributeGeneralCommissioningTCUpdateDeadline()
+        : SubscribeAttribute("tcupdate-deadline")
+    {
+    }
+
+    ~SubscribeAttributeGeneralCommissioningTCUpdateDeadline()
+    {
+    }
+
+    CHIP_ERROR SendCommand(MTRBaseDevice * device, chip::EndpointId endpointId) override
+    {
+        constexpr chip::ClusterId clusterId = chip::app::Clusters::GeneralCommissioning::Id;
+        constexpr chip::CommandId attributeId = chip::app::Clusters::GeneralCommissioning::Attributes::TCUpdateDeadline::Id;
+
+        ChipLogProgress(chipTool, "Sending cluster (0x%08" PRIX32 ") ReportAttribute (0x%08" PRIX32 ") on endpoint %u", clusterId, attributeId, endpointId);
+        dispatch_queue_t callbackQueue = dispatch_queue_create("com.chip.command", DISPATCH_QUEUE_SERIAL_WITH_AUTORELEASE_POOL);
+        __auto_type * cluster = [[MTRBaseClusterGeneralCommissioning alloc] initWithDevice:device endpointID:@(endpointId) queue:callbackQueue];
+        __auto_type * params = [[MTRSubscribeParams alloc] initWithMinInterval:@(mMinInterval) maxInterval:@(mMaxInterval)];
+        if (mKeepSubscriptions.HasValue()) {
+            params.replaceExistingSubscriptions = !mKeepSubscriptions.Value();
+        }
+        if (mFabricFiltered.HasValue()) {
+            params.filterByFabric = mFabricFiltered.Value();
+        }
+        if (mAutoResubscribe.HasValue()) {
+            params.resubscribeAutomatically = mAutoResubscribe.Value();
+        }
+        [cluster subscribeAttributeTCUpdateDeadlineWithParams:params
+            subscriptionEstablished:^() { mSubscriptionEstablished = YES; }
+            reportHandler:^(NSNumber * _Nullable value, NSError * _Nullable error) {
+                NSLog(@"GeneralCommissioning.TCUpdateDeadline response %@", [value description]);
                 if (error == nil) {
                     RemoteDataModelLogger::LogAttributeAsJSON(@(endpointId), @(clusterId), @(attributeId), value);
                 } else {
@@ -179202,6 +179288,10 @@ void registerClusterGeneralCommissioning(Commands & commands)
 #if MTR_ENABLE_PROVISIONAL
         make_unique<ReadGeneralCommissioningTCAcknowledgementsRequired>(), //
         make_unique<SubscribeAttributeGeneralCommissioningTCAcknowledgementsRequired>(), //
+#endif // MTR_ENABLE_PROVISIONAL
+#if MTR_ENABLE_PROVISIONAL
+        make_unique<ReadGeneralCommissioningTCUpdateDeadline>(), //
+        make_unique<SubscribeAttributeGeneralCommissioningTCUpdateDeadline>(), //
 #endif // MTR_ENABLE_PROVISIONAL
         make_unique<ReadGeneralCommissioningGeneratedCommandList>(), //
         make_unique<SubscribeAttributeGeneralCommissioningGeneratedCommandList>(), //
