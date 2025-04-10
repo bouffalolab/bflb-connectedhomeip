@@ -358,3 +358,8 @@
 	path = third_party/openthread/ot-realtek
 	url = https://github.com/rtkconnectivity/ot-realtek.git
 	platforms = realtek_bee
+[submodule "third_party/bouffalolab/bouffalo_sdk"]
+	path = third_party/bouffalolab/bouffalo_sdk
+	url = git@github.com:bouffalolab/bouffalo_sdk_private.git
+	branch = master
+	platforms = bouffalo_sdk 

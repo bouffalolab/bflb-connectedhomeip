@@ -28,7 +28,6 @@ ALL_PLATFORMS = set([
     'ameba',
     'android',
     'asr',
-    'bl602',
     'bouffalolab',
     'cc13xx_26xx',
     'cc32xx',
@@ -52,6 +51,7 @@ ALL_PLATFORMS = set([
     'genio',
     'openiotsdk',
     'silabs_docker',
+    'bouffalo_sdk',
     'unit_tests'
 ])
 
