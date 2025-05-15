@@ -9,10 +9,10 @@ Supported board:
 
 Please refer to the following documents for more information
 
--   [Bouffalo Lab - Platform overview](../../../docs/platforms/bouffalolab/platform_overview.md)
--   [Bouffalo Lab - Getting Started](../../../docs/platforms/bouffalolab/getting_started.md)
--   [Bouffalo Lab - OTA upgrade](../../../docs/platforms/bouffalolab/ota_upgrade.md)
--   [Bouffalo Lab - Matter factory data generation](../../../docs/platforms/bouffalolab/matter_factory_data.md)
+-   [Bouffalo Lab - Platform overview](../../../docs/guides/bouffalolab/platform_overview.md)
+-   [Bouffalo Lab - Getting Started](../../../docs/guides/bouffalolab/getting_started.md)
+-   [Bouffalo Lab - OTA upgrade](../../../docs/guides/bouffalolab/ota_upgrade.md)
+-   [Bouffalo Lab - Matter factory data generation](../../../docs/guides/bouffalolab/matter_factory_data.md)
 
 ## Build CHIP Contact Sensor example
 
