@@ -29,6 +29,7 @@ extern "C" {
 using namespace ::chip;
 using namespace ::chip::DeviceLayer::Internal;
 using namespace ::chip::Platform;
+using namespace ::chip::System;
 
 namespace chip {
 namespace DeviceLayer {
@@ -134,26 +135,38 @@ Status BLWiFiDriver::ReorderNetwork(ByteSpan networkId, uint8_t index, MutableCh
 
 CHIP_ERROR BLWiFiDriver::ConnectWiFiNetwork(const char * ssid, uint8_t ssidLen, const char * key, uint8_t keyLen)
 {
-    wifi_mgmr_sta_connect_params_t conn_param = { 0 };
+    wifi_mgmr_sta_connect_params_t * p_conn_param = (wifi_mgmr_sta_connect_params_t*)malloc(sizeof(wifi_mgmr_sta_connect_params_t));
 
-    ConnectivityMgrImpl().ChangeWiFiStationState(ConnectivityManager::kWiFiStationState_Connecting);
+    if (p_conn_param) {
 
-    strncpy((char *) conn_param.ssid, ssid, ssidLen);
-    conn_param.ssid_len = ssidLen;
+        memset(p_conn_param, 0, sizeof(wifi_mgmr_sta_connect_params_t));
 
-    if (keyLen)
-    {
-        strncpy((char *) conn_param.key, key, keyLen);
-        conn_param.key_len = keyLen;
+        strncpy((char *) p_conn_param->ssid, ssid, ssidLen);
+        p_conn_param->ssid_len = ssidLen;
+
+        if (keyLen)
+        {
+            strncpy((char *) p_conn_param->key, key, keyLen);
+            p_conn_param->key_len = keyLen;
+        }
+        p_conn_param->freq1         = 0;
+        p_conn_param->freq2         = 0;
+        p_conn_param->use_dhcp      = 1;
+        p_conn_param->pmf_cfg       = 1;
+        p_conn_param->quick_connect = 1;
+        p_conn_param->timeout_ms    = -1;
+
+        DeviceLayer::SystemLayer().StartTimer(
+            System::Clock::Milliseconds32(100),
+            [](Layer *, void * p_arg) {
+
+                wifi_mgmr_sta_connect_params_t * p_conn = (wifi_mgmr_sta_connect_params_t *) p_arg;
+                wifi_mgmr_sta_connect(p_conn);
+                ConnectivityMgrImpl().ChangeWiFiStationState(ConnectivityManager::kWiFiStationState_Connecting);
+                free(p_conn);
+            },
+            p_conn_param);
     }
-    conn_param.freq1         = 0;
-    conn_param.freq2         = 0;
-    conn_param.use_dhcp      = 1;
-    conn_param.pmf_cfg       = 1;
-    conn_param.quick_connect = 1;
-    conn_param.timeout_ms    = -1;
-
-    wifi_mgmr_sta_connect(&conn_param);
 
     return CHIP_NO_ERROR;
 }
@@ -386,13 +399,12 @@ void NetworkEventHandler(const ChipDeviceEvent * event, intptr_t arg)
         break;
     case kWiFiOnConnected:
         BLWiFiDriver::GetInstance().OnNetworkStatusChange();
+        ConnectivityMgrImpl().ChangeWiFiStationState(ConnectivityManagerImpl::kWiFiStationState_Connected);
         break;
     case kGotIpAddress:
-        ConnectivityMgrImpl().ChangeWiFiStationState(ConnectivityManagerImpl::kWiFiStationState_Connected);
         ConnectivityMgrImpl().OnConnectivityChanged(deviceInterface_getNetif());
         break;
     case kGotIpv6Address:
-        ConnectivityMgrImpl().ChangeWiFiStationState(ConnectivityManagerImpl::kWiFiStationState_Connected);
         ConnectivityMgrImpl().OnConnectivityChanged(deviceInterface_getNetif());
         break;
     case kWiFiOnDisconnected:
@@ -433,10 +445,6 @@ extern "C" void wifi_event_handler(uint32_t code)
         event.Type = kWiFiOnConnecting;
         PlatformMgr().PostEventOrDie(&event);
         break;
-    case CODE_WIFI_ON_CONNECTED:
-        event.Type = kWiFiOnConnected;
-        PlatformMgr().PostEventOrDie(&event);
-        break;
     case CODE_WIFI_ON_GOT_IP:
         event.Type = kGotIpAddress;
         PlatformMgr().PostEventOrDie(&event);
@@ -459,18 +467,19 @@ extern "C" void network_netif_ext_callback(struct netif * nif, netif_nsc_reason_
 
     if (((LWIP_NSC_IPV6_ADDR_STATE_CHANGED | LWIP_NSC_IPV6_SET) & reason) && args)
     {
+        if (args->ipv6_addr_state_changed.addr_index < LWIP_IPV6_NUM_ADDRESSES && 
+            ip6_addr_ispreferred(netif_ip6_addr_state(nif, args->ipv6_addr_state_changed.addr_index))) {
+            if (ip6_addr_islinklocal(netif_ip6_addr(nif, args->ipv6_addr_state_changed.addr_index))) {
 
-        if (args->ipv6_addr_state_changed.addr_index >= LWIP_IPV6_NUM_ADDRESSES ||
-            ip6_addr_islinklocal(netif_ip6_addr(nif, args->ipv6_addr_state_changed.addr_index)))
-        {
-            return;
-        }
-
-        if (netif_ip6_addr_state(nif, args->ipv6_addr_state_changed.addr_index) != args->ipv6_addr_state_changed.old_state &&
-            ip6_addr_ispreferred(netif_ip6_addr_state(nif, args->ipv6_addr_state_changed.addr_index)))
-        {
-            event.Type = kGotIpv6Address;
-            PlatformMgr().PostEventOrDie(&event);
+                if (!ConnectivityMgrImpl()._IsWiFiStationConnected()) {
+                    event.Type = kWiFiOnConnected;
+                    PlatformMgr().PostEventOrDie(&event);
+                }
+            }
+            else {
+                event.Type = kGotIpv6Address;
+                PlatformMgr().PostEventOrDie(&event);
+            }
         }
     }
 
