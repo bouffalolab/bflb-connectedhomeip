@@ -1,6 +1,6 @@
 {
   "fileFormat": 2,
-  "featureLevel": 103,
+  "featureLevel": 106,
   "creator": "zap",
   "keyValuePairs": [
     {
@@ -41,14 +41,16 @@
         "code": 22,
         "profileId": 259,
         "label": "MA-rootdevice",
-        "name": "MA-rootdevice"
+        "name": "MA-rootdevice",
+        "deviceTypeOrder": 0
       },
       "deviceTypes": [
         {
           "code": 22,
           "profileId": 259,
           "label": "MA-rootdevice",
-          "name": "MA-rootdevice"
+          "name": "MA-rootdevice",
+          "deviceTypeOrder": 0
         }
       ],
       "deviceVersions": [
@@ -120,6 +122,22 @@
             {
               "name": "PartsList",
               "code": 3,
+              "mfgCode": null,
+              "side": "server",
+              "type": "array",
+              "included": 1,
+              "storageOption": "External",
+              "singleton": 0,
+              "bounded": 0,
+              "defaultValue": null,
+              "reportable": 1,
+              "minInterval": 1,
+              "maxInterval": 65534,
+              "reportableChange": 0
+            },
+            {
+              "name": "TagList",
+              "code": 4,
               "mfgCode": null,
               "side": "server",
               "type": "array",
@@ -2627,14 +2645,16 @@
         "code": 269,
         "profileId": 259,
         "label": "MA-extendedcolorlight",
-        "name": "MA-extendedcolorlight"
+        "name": "MA-extendedcolorlight",
+        "deviceTypeOrder": 0
       },
       "deviceTypes": [
         {
           "code": 269,
           "profileId": 259,
           "label": "MA-extendedcolorlight",
-          "name": "MA-extendedcolorlight"
+          "name": "MA-extendedcolorlight",
+          "deviceTypeOrder": 0
         }
       ],
       "deviceVersions": [
@@ -3456,6 +3476,22 @@
               "reportableChange": 0
             },
             {
+              "name": "TagList",
+              "code": 4,
+              "mfgCode": null,
+              "side": "server",
+              "type": "array",
+              "included": 1,
+              "storageOption": "External",
+              "singleton": 0,
+              "bounded": 0,
+              "defaultValue": null,
+              "reportable": 1,
+              "minInterval": 1,
+              "maxInterval": 65534,
+              "reportableChange": 0
+            },
+            {
               "name": "FeatureMap",
               "code": 65532,
               "mfgCode": null,
@@ -3465,7 +3501,7 @@
               "storageOption": "External",
               "singleton": 0,
               "bounded": 0,
-              "defaultValue": null,
+              "defaultValue": "",
               "reportable": 1,
               "minInterval": 1,
               "maxInterval": 65534,
