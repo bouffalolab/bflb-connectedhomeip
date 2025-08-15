@@ -2323,6 +2323,7 @@ endpoint 0 {
     callback attribute serverList;
     callback attribute clientList;
     callback attribute partsList;
+    callback attribute tagList;
     callback attribute featureMap;
     callback attribute clusterRevision;
   }
@@ -2628,6 +2629,7 @@ endpoint 1 {
     callback attribute serverList;
     callback attribute clientList;
     callback attribute partsList;
+    callback attribute tagList;
     callback attribute featureMap;
     callback attribute clusterRevision;
   }

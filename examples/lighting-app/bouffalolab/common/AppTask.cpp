@@ -22,6 +22,8 @@
 #include <app/server/Dnssd.h>
 #include <app/server/OnboardingCodesUtil.h>
 #include <app/server/Server.h>
+#include <app/util/att-storage.h>
+#include <app/util/attribute-storage.h>
 #include <credentials/DeviceAttestationCredsProvider.h>
 #include <credentials/examples/DeviceAttestationCredsExample.h>
 #include <platform/bouffalolab/common/BLConfig.h>
@@ -86,7 +88,22 @@ Identify sIdentify = {
     Clusters::Identify::IdentifyTypeEnum::kLightOutput,
 };
 
-} // namespace
+constexpr const uint8_t kNamespaceCommon   = 7;
+constexpr const uint8_t kTagCommonZero = 0;
+constexpr const uint8_t kTagCommonOne = 1;
+constexpr const uint8_t kNamespacePosition = 8;
+// Common Position Namespace: 8, tag: 0 (Left)
+constexpr const uint8_t kTagPositionLeft = 0;
+// Common Position Namespace: 8, tag: 3 (Bottom)
+constexpr const uint8_t kTagPositionBottom                                 = 3;
+const Clusters::Descriptor::Structs::SemanticTagStruct::Type gEp0TagList[] = {
+    { .namespaceID = kNamespaceCommon, .tag = kTagCommonZero }, { .namespaceID = kNamespacePosition, .tag = kTagPositionBottom }
+};
+const Clusters::Descriptor::Structs::SemanticTagStruct::Type gEp1TagList[] = {
+    { .namespaceID = kNamespaceCommon, .tag = kTagCommonOne }, { .namespaceID = kNamespacePosition, .tag = kTagPositionLeft }
+};
+
+}
 
 AppTask AppTask::sAppTask;
 
@@ -187,6 +204,9 @@ void AppTask::AppTaskMain(void * pvParameter)
     GetAppTask().PostEvent(APP_EVENT_LIGHTING_MASK);
 
     vTaskSuspend(NULL);
+
+    SetTagList(0, Span<const Clusters::Descriptor::Structs::SemanticTagStruct::Type>(gEp0TagList));
+    SetTagList(1, Span<const Clusters::Descriptor::Structs::SemanticTagStruct::Type>(gEp1TagList));
 
     DiagnosticDataProviderImpl::GetDefaultInstance().GetCurrentHeapFree(currentHeapFree);
     ChipLogProgress(NotSpecified, "App Task started, with SRAM heap %lld left\r\n", currentHeapFree);
