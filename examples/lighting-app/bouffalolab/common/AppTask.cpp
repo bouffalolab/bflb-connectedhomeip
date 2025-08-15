@@ -89,13 +89,11 @@ Identify sIdentify = {
 } // namespace
 
 AppTask AppTask::sAppTask;
-StackType_t AppTask::appStack[APP_TASK_STACK_SIZE / sizeof(StackType_t)];
-StaticTask_t AppTask::appTaskStruct;
 
 void StartAppTask(void)
 {
-    GetAppTask().sAppTaskHandle = xTaskCreateStatic(GetAppTask().AppTaskMain, APP_TASK_NAME, ArraySize(GetAppTask().appStack), NULL,
-                                                    APP_TASK_PRIORITY, GetAppTask().appStack, &GetAppTask().appTaskStruct);
+    xTaskCreate(GetAppTask().AppTaskMain, APP_TASK_NAME, APP_TASK_STACK_SIZE / sizeof(StackType_t),
+                            NULL, APP_TASK_PRIORITY, &GetAppTask().sAppTaskHandle);
     if (GetAppTask().sAppTaskHandle == NULL)
     {
         ChipLogError(NotSpecified, "Failed to create app task");

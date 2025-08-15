@@ -354,7 +354,7 @@ template("bl_iot_sdk") {
         invoker.bouffalo_sdk_component_easyflash_enabled) {
       include_dirs += [ "${bl_iot_sdk_root}/components/stage/easyflash4/inc" ]
     } else {
-      defines = [ "LFS_THREADSAFE" ]
+      defines = [ "LFS_THREADSAFE", "CONFIG_LITTLEFS_XIP_FLASH_READ", "LFS_NO_DEBUG", "LFS_NO_WARN", "LFS_NO_ERROR" ]
 
       include_dirs +=
           [ "${bl_iot_sdk_root}/components/stage/littlefs/littlefs" ]
