@@ -224,9 +224,10 @@ bitmap TestGlobalBitmap : bitmap32 {
   kSecondBit = 0x2;
 }
 
-struct AtomicAttributeStatusStruct {
-  attrib_id attributeID = 0;
-  status statusCode = 1;
+struct TestGlobalStruct {
+  char_string<128> name = 0;
+  nullable TestGlobalBitmap myBitmap = 1;
+  optional nullable TestGlobalEnum myEnum = 2;
 }
 
 struct LocationDescriptorStruct {
@@ -235,10 +236,9 @@ struct LocationDescriptorStruct {
   nullable AreaTypeTag areaType = 2;
 }
 
-struct TestGlobalStruct {
-  char_string<128> name = 0;
-  nullable TestGlobalBitmap myBitmap = 1;
-  optional nullable TestGlobalEnum myEnum = 2;
+struct AtomicAttributeStatusStruct {
+  attrib_id attributeID = 0;
+  status statusCode = 1;
 }
 
 /** Attributes and commands for putting a device into Identification mode (e.g. flashing a light). */
@@ -2323,7 +2323,6 @@ endpoint 0 {
     callback attribute serverList;
     callback attribute clientList;
     callback attribute partsList;
-    callback attribute tagList;
     callback attribute featureMap;
     callback attribute clusterRevision;
   }
@@ -2629,7 +2628,6 @@ endpoint 1 {
     callback attribute serverList;
     callback attribute clientList;
     callback attribute partsList;
-    callback attribute tagList;
     callback attribute featureMap;
     callback attribute clusterRevision;
   }
