@@ -54,6 +54,5 @@ void wifi_start_firmware_task(void)
 
     wifi_task_create();
 
-    vTaskDelay(500);
     fhost_init();
 }
