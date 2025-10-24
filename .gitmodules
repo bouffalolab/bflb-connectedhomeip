@@ -347,6 +347,6 @@
 	platforms = linux,darwin
 [submodule "third_party/bouffalolab/bouffalo_sdk"]
 	path = third_party/bouffalolab/bouffalo_sdk
-	url = git@github.com:bouffalolab/bouffalo_sdk_private.git
+	url = git@git.bouffalolab.com:bouffalolab/bouffalo_sdk.git
 	branch = master
-	platforms = bouffalo_sdk 
+	platforms = bouffalolab

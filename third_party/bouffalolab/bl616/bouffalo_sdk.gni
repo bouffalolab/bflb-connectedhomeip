@@ -47,6 +47,7 @@ template("bouffalo_sdk") {
     defines = [
       "BL616=BL616",
       "ARCH_RISCV",
+      "CONFIG_BOOT2"
     ]
 
     include_dirs = []
@@ -63,6 +64,10 @@ template("bouffalo_sdk") {
       "-fstrict-volatile-bitfields",
       "-fshort-enums",
       "-Wno-unused-but-set-variable",
+      "-Wno-sign-compare",
+    ]
+
+    cflags_cc = [
     ]
 
     cflags = [
@@ -104,6 +109,10 @@ template("bouffalo_sdk") {
       "${bouffalo_sdk_root}/drivers/soc/bl616/std/startup/start_load.c",
       "${bouffalo_sdk_root}/drivers/soc/bl616/std/startup/system_bl616.c",
       "${bouffalo_sdk_root}/drivers/soc/bl616/std/startup/vector.S",
+    ]
+
+    cflags_c = [
+      "-Wno-sign-compare",
     ]
 
     configs += [
@@ -249,7 +258,7 @@ template("bouffalo_sdk") {
       "${bouffalo_sdk_root}/drivers/lhal/src/flash/bflb_xip_sflash.c",
     ]
 
-    libs = [ "${bouffalo_sdk_root}/drivers/lhal/src/pka/libpka.a" ]
+    libs = [ "${bouffalo_sdk_root}/drivers/lhal/src/pka/libpka_bl616.a" ]
 
     cflags_c = [
       "-Wno-shadow",
@@ -312,7 +321,6 @@ template("bouffalo_sdk") {
   source_set("${sdk_target_name}_board") {
     defines = [
       "CONFIG_MBEDTLS",
-      "CONFIG_BFLOG",
       "BL616",
     ]
 
@@ -320,6 +328,7 @@ template("bouffalo_sdk") {
 
     sources = [
       "${bouffalo_sdk_root}/bsp/board/bl616dk/board.c",
+      "${bouffalo_sdk_root}/bsp/board/bl616dk/board_flash_psram.c",
       "${bouffalo_sdk_root}/bsp/board/bl616dk/board_rf.c",
       "${bouffalo_sdk_root}/bsp/board/bl616dk/fw_header.c",
     ]
@@ -330,6 +339,7 @@ template("bouffalo_sdk") {
       "-Wno-format",
       "-Wno-format-nonliteral",
       "-Wno-format-security",
+      "-Wno-sign-compare"
     ]
 
     configs += [
@@ -662,7 +672,7 @@ template("bouffalo_sdk") {
   config("${sdk_target_name}_config_utils") {
     include_dirs = [
       "${bouffalo_sdk_root}/components/utils/log",
-      "${bouffalo_sdk_root}/components/utils/log/bflog",
+      "${bouffalo_sdk_root}/components/utils/log/bflb_log",
       "${bouffalo_sdk_root}/components/utils/bflb_mtd/include",
       "${bouffalo_sdk_root}/components/utils/bflb_ota",
       "${bouffalo_sdk_root}/components/utils/coredump",
@@ -683,8 +693,8 @@ template("bouffalo_sdk") {
   source_set("${sdk_target_name}_utils") {
     defines = [
       "CONFIG_LOG_LEVEL=0",
-      "CONFIG_BFLOG",
-      "CONFIG_BFLOG_DEBUG",
+      "CONFIG_BFLB_LOG",
+      "CONFIG_BFLB_LOG_DEBUG",
     ]
 
     if (defined(invoker.enable_debug_coredump) &&
@@ -698,7 +708,7 @@ template("bouffalo_sdk") {
       "${bouffalo_sdk_root}/components/utils/bflb_ota/bflb_ota.c",
       "${bouffalo_sdk_root}/components/utils/bflb_ota/utils_sha256.c",
       "${bouffalo_sdk_root}/components/utils/getopt/utils_getopt.c",
-      "${bouffalo_sdk_root}/components/utils/log/bflog/bflog.c",
+      "${bouffalo_sdk_root}/components/utils/log/bflb_log/bflb_log.c",
       "${bouffalo_sdk_root}/components/utils/log/log.c",
       "${bouffalo_sdk_root}/components/utils/log/log_freertos.c",
       "${bouffalo_sdk_root}/components/utils/math/src/utils_base64.c",
@@ -726,13 +736,13 @@ template("bouffalo_sdk") {
     }
 
     cflags_c = [
-      "-Wno-sign-compare",
       "-Wno-type-limits",
       "-Wno-stringop-truncation",
       "-Wno-format",
       "-Wno-format-nonliteral",
       "-Wno-format-security",
       "-Wno-implicit-function-declaration",
+      "-Wno-sign-compare",
     ]
 
     configs += [
@@ -1001,26 +1011,26 @@ template("bouffalo_sdk") {
     defines = [
       "CFG_VIF_MAX=2",
       "CFG_STA_MAX=4",
-      "CFG_UMAC",
     ]
 
     include_dirs = [
       "${bouffalo_sdk_root}/components/wireless/wifi6/include",
-      "${bouffalo_sdk_root}/components/wireless/wifi6/bl6_os_adapter/include",
+      "${bouffalo_sdk_root}/components/wireless/wifi6/macsw_os_adapter/include",
       "${bouffalo_sdk_root}/components/wireless/wifi6/wifi6_lwip_adapter/include",
     ]
   }
 
   source_set("${sdk_target_name}_wifi") {
     defines = [ "CFG_IPV6" ]
-    libs = [ "${bouffalo_sdk_root}/components/wireless/wifi6/lib/libwifi6.a" ]
+    libs = [ "${bouffalo_sdk_root}/components/wireless/wifi6/lib/libwifi6_coex.a" ]
 
     include_dirs =
         [ "${bouffalo_sdk_root}/components/wireless/wifi6/wifi6_lwip_adapter" ]
 
     sources = [
-      "${bouffalo_sdk_root}/components/wireless/wifi6/bl6_os_adapter/src/platform_bouffalo_sdk.c",
-      "${bouffalo_sdk_root}/components/wireless/wifi6/bl6_os_adapter/src/rtos_al.c",
+      "${bouffalo_sdk_root}/components/wireless/macsw_plat.c",
+      "${bouffalo_sdk_root}/components/wireless/wifi6/macsw_os_adapter/src/platform_bouffalo_sdk.c",
+      "${bouffalo_sdk_root}/components/wireless/wifi6/macsw_os_adapter/src/rtos_al.c",
       "${bouffalo_sdk_root}/components/wireless/wifi6/wifi6_lwip_adapter/cli_al.c",
       "${bouffalo_sdk_root}/components/wireless/wifi6/wifi6_lwip_adapter/mat.c",
       "${bouffalo_sdk_root}/components/wireless/wifi6/wifi6_lwip_adapter/net_al.c",
@@ -1046,6 +1056,7 @@ template("bouffalo_sdk") {
     configs += [
       ":${sdk_target_name}_config_std_drv",
       ":${sdk_target_name}_config_lhal",
+      ":${sdk_target_name}_config_rf",
       ":${sdk_target_name}_config_utils",
       ":${sdk_target_name}_config_shell",
       ":${sdk_target_name}_config_freertos",
@@ -1150,6 +1161,7 @@ template("bouffalo_sdk") {
       "-Wno-format-security",
       "-Wno-discarded-qualifiers",
       "-Wno-misleading-indentation",
+      "-Wno-type-limits"
     ]
 
     configs += [
@@ -1177,6 +1189,7 @@ template("bouffalo_sdk") {
       "CONFIG_BL_SDK",
       "CHIP_HDR=<bl616.h>",
       "CHIP_GLB_HDR=<bl616_glb.h>",
+      "CHIP_SYS_HDR=<bl616_sys.h>",
       "MAC_ADDRESS_MAX_NUM=3",
     ]
 
@@ -1200,21 +1213,25 @@ template("bouffalo_sdk") {
     }
 
     libs = [
-      "${bouffalo_sdk_root}/components/wireless/lmac154/lmac154/lib/liblmac154.a",
-      "${bouffalo_sdk_root}/components/wireless/thread/openthread_utils/lib/libopenthread_utils.a",
+      "${bouffalo_sdk_root}/components/wireless/lmac154/lmac154/lib/liblmac154_bl616.a",
+      "${bouffalo_sdk_root}/components/wireless/thread/openthread_utils/lib/libopenthread_utils_bl616.a",
     ]
 
     cflags_c = [ "-Wno-sign-compare" ]
 
-    configs += [ ":${sdk_target_name}_config_freertos" ]
-    public_configs = [
+    configs += [
       ":${sdk_target_name}_config",
+      ":${sdk_target_name}_config_sys",
       ":${sdk_target_name}_config_utils",
       ":${sdk_target_name}_config_mm",
       ":${sdk_target_name}_config_std_drv",
       ":${sdk_target_name}_config_lhal",
       ":${sdk_target_name}_config_shell",
-      ":${sdk_target_name}_config_littlefs",
+      ":${sdk_target_name}_config_littlefs", 
+      ":${sdk_target_name}_config_freertos"
+    ]
+
+    public_configs = [
       ":${sdk_target_name}_config_openthread_port",
     ]
 
