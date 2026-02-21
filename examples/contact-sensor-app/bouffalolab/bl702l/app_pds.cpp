@@ -125,6 +125,7 @@ void app_pds_after_sleep_callback(void)
 
         zb_timer_restore_events(true);
 
+        lmac154_enableCoex();
         bl_irq_enable(M154_IRQn);
     }
     bl_sec_init();
