@@ -25,6 +25,7 @@ on:
 
 concurrency:
   group: ${{ github.ref }}-${{ github.workflow }}-${{ (github.event_name == 'pull_request' && github.event.number) || (github.event_name == 'workflow_dispatch' && github.run_number) || github.sha }}
+
   cancel-in-progress: true
 
 env:
@@ -66,7 +67,7 @@ jobs:
           rm -rf ./out
 
       - name: Build example BL702 Lighting App (Ethernet)
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'bouffalolab/bflb-connectedhomeip
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'bouffalolab/bflb-connectedhomeip'
         run: |
           ./scripts/run_in_build_env.sh \
             "./scripts/build/build_examples.py --target bouffalolab-bl706dk-light-ethernet-easyflash build "
@@ -97,7 +98,7 @@ jobs:
           rm -rf ./out
 
       - name: Build example BL702L Lighting App
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'bouffalolab/bflb-connectedhomeip
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'bouffalolab/bflb-connectedhomeip'
         run: |
           ./scripts/run_in_build_env.sh \
             "./scripts/build/build_examples.py --target bouffalolab-bl704ldk-light-thread-littlefs-mfd build "
@@ -118,7 +119,7 @@ jobs:
           rm -rf ./out
 
       - name: Build example BL616 Lighting App (Ethernet)
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'bouffalolab/bflb-connectedhomeip
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'bouffalolab/bflb-connectedhomeip'
         run: |
           ./scripts/run_in_build_env.sh \
             "./scripts/build/build_examples.py --target bouffalolab-bl616dk-light-ethernet-littlefs-mfd build "

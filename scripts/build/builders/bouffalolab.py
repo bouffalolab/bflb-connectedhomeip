@@ -203,9 +203,9 @@ class BouffalolabBuilder(GnBuilder):
             self.argsOpt.append(f'openthread_project_core_config_file="{bouffalo_chip}-openthread-core-config.h"')
 
             if enable_thread_type == BouffalolabThreadType.THREAD_FTD:
-                self.argsOpt.append(f'chip_openthread_ftd=true')
+                self.argsOpt.append('chip_openthread_ftd=true')
             else:
-                self.argsOpt.append(f'chip_openthread_ftd=false')
+                self.argsOpt.append('chip_openthread_ftd=false')
 
             if not use_matter_openthread:
                 if bouffalo_chip in {"bl702", "bl702l"}:
@@ -245,10 +245,10 @@ class BouffalolabBuilder(GnBuilder):
 
         self.argsOpt.append(f"enable_heap_monitoring={str(enable_heap_monitoring).lower()}")
         if enable_debug_coredump:
-            self.argsOpt.append(f"enable_debug_coredump=true")
+            self.argsOpt.append("enable_debug_coredump=true")
             self.argsOpt.append(f"coredump_binary_id={int(time.time())}")
 
-        self.argsOpt.append(f"chip_generate_link_map_file=true")
+        self.argsOpt.append("chip_generate_link_map_file=true")
 
         try:
             self.argsOpt.append('bouffalolab_sdk_root="%s"' % os.environ['BOUFFALOLAB_SDK_ROOT'])
