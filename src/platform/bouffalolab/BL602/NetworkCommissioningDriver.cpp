@@ -37,11 +37,11 @@ auto converter = [](const wifi_mgmr_ap_item_t & raw) -> WiFiScanResponse {
     WiFiScanResponse item;
 
     item.security.SetRaw(raw.auth);
-    item.ssidLen         = raw.ssid_len < chip::DeviceLayer::Internal::kMaxWiFiSSIDLength ? raw.ssid_len
-                                                                                          : chip::DeviceLayer::Internal::kMaxWiFiSSIDLength;
-    item.channel         = raw.channel;
-    item.wiFiBand        = chip::DeviceLayer::NetworkCommissioning::WiFiBand::k2g4;
-    item.rssi            = raw.rssi;
+    item.ssidLen  = raw.ssid_len < chip::DeviceLayer::Internal::kMaxWiFiSSIDLength ? raw.ssid_len
+                                                                                   : chip::DeviceLayer::Internal::kMaxWiFiSSIDLength;
+    item.channel  = raw.channel;
+    item.wiFiBand = chip::DeviceLayer::NetworkCommissioning::WiFiBand::k2g4;
+    item.rssi     = raw.rssi;
     memcpy(item.ssid, raw.ssid, item.ssidLen);
     memcpy(item.bssid, raw.bssid, 6);
 
