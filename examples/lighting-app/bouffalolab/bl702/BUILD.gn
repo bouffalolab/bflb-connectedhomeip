@@ -78,7 +78,7 @@ bl_iot_sdk("sdk") {
     "CHIP_DEVICE_CONFIG_USE_TEST_SETUP_DISCRIMINATOR=${setupDiscriminator}",
     "OTA_PERIODIC_TIMEOUT=${ota_periodic_query_timeout_seconds}",
     "OTA_AUTO_REBOOT_DELAY=${ota_auto_reboot_delay_seconds}",
-    "PRINT_DEBUG=0",
+    "PRINT_DEBUG=1",
   ]
 
   defines += [ "PW_RPC_ENABLED=${chip_enable_pw_rpc}" ]
@@ -149,6 +149,7 @@ bouffalolab_executable("lighting_app") {
 
   sources = [
     "${example_dir}/common/AppTask.cpp",
+    "${example_dir}/common/ThreadUdpBandwidthService.cpp",
     "${example_dir}/common/ZclCallbacks.cpp",
     "${examples_plat_dir}/common/iot_sdk/aos_task.c",
     "${examples_plat_dir}/common/iot_sdk/demo_pwm.c",

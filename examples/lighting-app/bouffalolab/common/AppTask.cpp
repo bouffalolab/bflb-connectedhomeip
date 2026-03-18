@@ -60,6 +60,7 @@ extern "C" {
 #endif
 
 #include "AppTask.h"
+#include "ThreadUdpBandwidthService.h"
 #include "mboard.h"
 
 using namespace ::chip;
@@ -180,6 +181,13 @@ void AppTask::AppTaskMain(void * pvParameter)
     if (ret != CHIP_NO_ERROR)
     {
         ChipLogError(NotSpecified, "PlatformMgr().StartEventLoopTask() failed");
+        appError(ret);
+    }
+
+    ret = ThreadUdpBandwidthService::Instance().Init();
+    if (ret != CHIP_NO_ERROR)
+    {
+        ChipLogError(NotSpecified, "ThreadUdpBandwidthService init schedule failed");
         appError(ret);
     }
 
