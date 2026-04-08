@@ -1,0 +1,19 @@
+{
+    "name": "mini-app",
+    "version": "0.1.0",
+    "description": "Minimal Matter example for Bouffalo Lab platforms",
+    "platform": "bouffalolab",
+    "target": "bl616",
+    "clusters": [
+        "Basic",
+        "Descriptor"
+    ],
+    "endpoint": 0,
+    "build": {
+        "type": "gn",
+        "requires": [
+            "chip",
+            "bouffalolab_sdk"
+        ]
+    }
+}

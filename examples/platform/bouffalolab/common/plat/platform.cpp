@@ -68,6 +68,9 @@
 #endif
 
 #include <app/clusters/network-commissioning/network-commissioning.h>
+#if CONFIG_TEST_EVENT_TRIGGER_ENABLED
+#include <app/clusters/ota-requestor/OTATestEventTriggerHandler.h>
+#endif
 
 #if CONFIG_ENABLE_CHIP_SHELL && CHIP_DEVICE_CONFIG_ENABLE_WIFI
 #include <lib/shell/commands/WiFi.h>
@@ -100,6 +103,14 @@ chip::app::Clusters::NetworkCommissioning::Instance
 #if CONFIG_BOUFFALOLAB_FACTORY_DATA_ENABLE
 namespace {
 FactoryDataProvider sFactoryDataProvider;
+}
+#endif
+
+#if CONFIG_TEST_EVENT_TRIGGER_ENABLED
+namespace {
+static uint8_t sTestEventTriggerEnableKey[TestEventTriggerDelegate::kEnableKeyLength] = { 0x00, 0x11, 0x22, 0x33, 0x44, 0x55,
+                                                                                          0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb,
+                                                                                          0xcc, 0xdd, 0xee, 0xff };
 }
 #endif
 
@@ -298,6 +309,13 @@ CHIP_ERROR PlatformManagerImpl::PlatformInit(void)
     chip::DeviceLayer::SetDeviceInfoProvider(&gExampleDeviceInfoProvider);
 
     static CommonCaseDeviceServerInitParams initParams;
+#if CONFIG_TEST_EVENT_TRIGGER_ENABLED
+    static SimpleTestEventTriggerDelegate sTestEventTriggerDelegate{};
+    static OTATestEventTriggerHandler sOtaTestEventTriggerHandler{};
+    sTestEventTriggerDelegate.Init(ByteSpan(sTestEventTriggerEnableKey));
+    sTestEventTriggerDelegate.AddHandler(&sOtaTestEventTriggerHandler);
+    initParams.testEventTriggerDelegate = &sTestEventTriggerDelegate;
+#endif
     (void) initParams.InitializeStaticResourcesBeforeServerInit();
     initParams.dataModelProvider = CodegenDataModelProviderInstance(initParams.persistentStorageDelegate);
 

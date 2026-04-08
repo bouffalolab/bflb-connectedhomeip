@@ -30,7 +30,11 @@ template("riscv_toolchain") {
         _tool_name_root = "${bouffalolab_sdk_root}/toolchain/riscv/Linux/bin/riscv64-unknown-elf-"
       }
     } else if ("mac" == host_os || "darwin" == host_os) {
-      _tool_name_root = "${bouffalolab_sdk_root}/toolchain/riscv/Darwin/bin/riscv64-unknown-elf-"
+      if (chip_device_platform == "bl616") {
+        _tool_name_root = "${bouffalolab_sdk_root}/toolchain/t-head-riscv/gcc_t-head_v2.6.1/bin/riscv64-unknown-elf-"
+      } else {
+        _tool_name_root = "${bouffalolab_sdk_root}/toolchain/riscv/Darwin/bin/riscv64-unknown-elf-"
+      }
     }
 
     ar = _tool_name_root + "ar"

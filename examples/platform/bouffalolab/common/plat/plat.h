@@ -26,7 +26,9 @@
 #ifndef CONFIG_APP_ADVERTISE_COMMISSIONABLE_ON_LAST_FABRIC_REMOVAL
 #define CONFIG_APP_ADVERTISE_COMMISSIONABLE_ON_LAST_FABRIC_REMOVAL 0
 #endif
-
+#ifndef CONFIG_TEST_EVENT_TRIGGER_ENABLED
+#define CONFIG_TEST_EVENT_TRIGGER_ENABLED 0
+#endif
 typedef void (*app_pds_gpio_irq_handler_t)(void * arg);
 
 #ifdef __cplusplus

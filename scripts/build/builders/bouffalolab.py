@@ -25,12 +25,18 @@ from .gn import GnBuilder
 class BouffalolabApp(Enum):
     LIGHT = auto()
     CONTACT = auto()
+    MINIMAL = auto()
+    PLATFORM_CERTIFICATE = auto()
 
     def ExampleName(self):
         if self == BouffalolabApp.LIGHT:
             return 'lighting-app'
         elif self == BouffalolabApp.CONTACT:
             return 'contact-sensor-app'
+        elif self == BouffalolabApp.MINIMAL:
+            return 'mini-app'
+        elif self == BouffalolabApp.PLATFORM_CERTIFICATE:
+            return 'platform-certificate-app'
         else:
             raise Exception('Unknown app type: %r' % self)
 
@@ -39,6 +45,10 @@ class BouffalolabApp(Enum):
             return ('chip-%s-lighting-example' % chip_name)
         elif self == BouffalolabApp.CONTACT:
             return ('chip-%s-contact-sensor-example' % chip_name)
+        elif self == BouffalolabApp.MINIMAL:
+            return ('chip-%s-mini-example' % chip_name)
+        elif self == BouffalolabApp.PLATFORM_CERTIFICATE:
+            return ('chip-%s-platform-certificate-example' % chip_name)
         else:
             raise Exception('Unknown app type: %r' % self)
 
