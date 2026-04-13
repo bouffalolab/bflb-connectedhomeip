@@ -116,6 +116,16 @@ CHIP_ERROR ConfigurationManagerImpl::StoreTotalOperationalHours(uint32_t totalOp
     return WriteConfigValue(BflbConfig::kCounterKey_TotalOperationalHours, totalOperationalHours);
 }
 
+CHIP_ERROR ConfigurationManagerImpl::GetConfigurationVersion(uint32_t & configurationVersion)
+{
+    return ReadConfigValue(BflbConfig::kConfigKey_ConfigurationVersion, configurationVersion);
+}
+
+CHIP_ERROR ConfigurationManagerImpl::StoreConfigurationVersion(uint32_t configurationVersion)
+{
+    return WriteConfigValue(BflbConfig::kConfigKey_ConfigurationVersion, configurationVersion);
+}
+
 CHIP_ERROR ConfigurationManagerImpl::ReadPersistedStorageValue(::chip::Platform::PersistedStorage::Key key, uint32_t & value)
 {
     BflbConfig::Key configKey{ key };

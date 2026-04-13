@@ -61,6 +61,7 @@ public:
     static constexpr char kConfigKey_OperationalDeviceICACerts[]   = ("op-device-ca-certs");
     static constexpr char kConfigKey_OperationalDevicePrivateKey[] = ("op-device-key");
     static constexpr char kConfigKey_RegulatoryLocation[]          = ("regulatory-location");
+    static constexpr char kConfigKey_LocationCapability[]          = ("location-capability");
     static constexpr char kConfigKey_CountryCode[]                 = ("country-code");
     static constexpr char kConfigKey_ActiveLocale[]                = ("active-locale");
     static constexpr char kConfigKey_Breadcrumb[]                  = ("breadcrumb");
@@ -74,6 +75,8 @@ public:
     static constexpr char kCounterKey_RebootCount[]           = ("reboot-count");
     static constexpr char kCounterKey_TotalOperationalHours[] = ("total-hours");
     static constexpr char kCounterKey_UpTime[]                = ("up-time");
+
+    static constexpr char kConfigKey_ConfigurationVersion[]     = ("configuration-version");
 
     static constexpr char kBLKey_factoryResetFlag[] = ("__factory_reset_pending");
 
