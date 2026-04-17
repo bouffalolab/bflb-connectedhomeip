@@ -454,5 +454,18 @@ CHIP_ERROR FactoryDataProvider::GetRotatingDeviceIdUniqueId(MutableByteSpan & un
     return CHIP_ERROR_BUFFER_TOO_SMALL;
 }
 
+CHIP_ERROR FactoryDataProvider::GetProductFinish(app::Clusters::BasicInformation::ProductFinishEnum * finish)
+{
+    CHIP_ERROR err = CHIP_NO_ERROR;
+    *finish        = app::Clusters::BasicInformation::ProductFinishEnum::kOther;
+    return err;
+}
+
+CHIP_ERROR FactoryDataProvider::GetProductPrimaryColor(app::Clusters::BasicInformation::ColorEnum * primaryColor)
+{
+    CHIP_ERROR err = CHIP_NO_ERROR;
+    *primaryColor  = app::Clusters::BasicInformation::ColorEnum::kBlack;
+    return err;
+}
 } // namespace DeviceLayer
 } // namespace chip

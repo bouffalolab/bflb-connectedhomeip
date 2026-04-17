@@ -62,20 +62,8 @@ public:
     CHIP_ERROR GetHardwareVersion(uint16_t & hardwareVersion) override;
     CHIP_ERROR GetHardwareVersionString(char * buf, size_t bufSize) override;
     CHIP_ERROR GetRotatingDeviceIdUniqueId(MutableByteSpan & uniqueIdSpan) override;
-
-    CHIP_ERROR GetProductFinish(ProductFinishEnum * finish)
-    {
-        CHIP_ERROR err = CHIP_NO_ERROR;
-        *finish        = ProductFinishEnum::kOther;
-        return err;
-    }
-
-    CHIP_ERROR GetProductPrimaryColor(ColorEnum * primaryColor)
-    {
-        CHIP_ERROR err = CHIP_NO_ERROR;
-        *primaryColor  = ColorEnum::kBlack;
-        return err;
-    }
+    CHIP_ERROR GetProductFinish(app::Clusters::BasicInformation::ProductFinishEnum * finish) override;
+    CHIP_ERROR GetProductPrimaryColor(app::Clusters::BasicInformation::ColorEnum * primaryColor) override;
 };
 
 } // namespace DeviceLayer
