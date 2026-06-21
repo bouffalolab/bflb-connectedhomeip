@@ -17,8 +17,8 @@ import os
 import re
 import shutil
 import time
-from pathlib import Path
 from enum import Enum, auto
+from pathlib import Path
 
 from .builder import Builder, BuilderOutput
 from .gn import GnBuilder
