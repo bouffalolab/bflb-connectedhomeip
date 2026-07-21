@@ -87,6 +87,15 @@ Identify sIdentify = {
 
 } // namespace
 
+// Drives the shared lighting LED from the zigbee ZCL dispatcher (zcl_dispatchClusterEvent
+// in ZigbeeStackMgr.cpp). Matter and zigbee are mutually exclusive, so this only runs
+// while the zigbee stack owns the device. Defined outside the anonymous namespace so the
+// zigbee dispatcher can link to it.
+void AppSetLightOnOff(bool onOff)
+{
+    sLightLED.SetOnoff(onOff);
+}
+
 AppTask AppTask::sAppTask;
 StackType_t AppTask::appStack[APP_TASK_STACK_SIZE / sizeof(StackType_t)];
 StaticTask_t AppTask::appTaskStruct;

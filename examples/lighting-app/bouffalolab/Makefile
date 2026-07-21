@@ -7,6 +7,11 @@ CHIP_ROOT      = ../../..
 BL_SDK_BASE    = ${CHIP_ROOT}/third_party/bouffalolab/repo_bouffalo_sdk
 export BL_SDK_BASE
 
+# External Bouffalo Zigbee SDK (NDA, a separate tree from BL_SDK_BASE).
+# Passing its path enables the dual-stack build (CONFIG_ZIGBEE_PATH != "" turns
+# CONFIG_ZIGBEE on). Example: make ... CONFIG_ZIGBEE_PATH=/path/to/bouffalo_zigbee
+CONFIG_ZIGBEE_PATH ?=
+
 CROSS_COMPILE ?= riscv64-unknown-elf-
 
 # =============================================================================
@@ -28,8 +33,47 @@ endif
 CONFIG_THREAD   ?= n
 CONFIG_ETHERNET ?= n
 
+# Zigbee is a separate 802.15.4 stack (external NDA tree CONFIG_ZIGBEE_PATH),
+# independent of the Matter network interface. It drives the same lmac154 radio
+# as Thread, so it is mutually exclusive with CONFIG_THREAD. Enabled by passing
+# CONFIG_ZIGBEE_PATH (the bouffalo_zigbee tree). CONFIG_ZIGBEE_APP is the internal
+# enable flag -- deliberately NOT named CONFIG_ZIGBEE: the SDK reserves CONFIG_ZIGBEE
+# to mean "zigbee shipped inside the SDK" and would add_subdirectory it during
+# find_package; we pull the external component ourselves (like the zigbee examples).
+CONFIG_ZIGBEE_APP ?= n
+ifneq ($(CONFIG_ZIGBEE_PATH),)
+  CONFIG_ZIGBEE_APP = y
+endif
+
 ifeq ($(words $(filter y,$(CONFIG_WIFI) $(CONFIG_THREAD) $(CONFIG_ETHERNET))),0)
   $(error At least one network interface must be enabled: CONFIG_WIFI=y, CONFIG_THREAD=y, or CONFIG_ETHERNET=y)
+endif
+
+# Zigbee validation: must not coexist with Thread (shared lmac154 802.15.4 radio),
+# and the external Zigbee SDK tree (CONFIG_ZIGBEE_PATH) must be present.
+ifeq ($(CONFIG_ZIGBEE_APP),y)
+  ifeq ($(CONFIG_THREAD),y)
+    $(error CONFIG_ZIGBEE_PATH and CONFIG_THREAD are mutually exclusive: both drive the lmac154 802.15.4 radio.)
+  endif
+  ifeq ($(wildcard $(CONFIG_ZIGBEE_PATH)/components/wireless/zigbee/CMakeLists.txt),)
+    $(error CONFIG_ZIGBEE_PATH is invalid (no components/wireless/zigbee/CMakeLists.txt): $(CONFIG_ZIGBEE_PATH). \
+      Example: make ... CONFIG_ZIGBEE_PATH=/path/to/bouffalo_zigbee)
+  endif
+  # zbapp (Zigbee app framework) pulls shell.h via `#if defined(CONFIG_SHELL)`,
+  # falling back to a legacy cli.h the SDK does not ship. Default the shell ON for
+  # the zigbee build; the user can turn it OFF (CONFIG_SHELL=n), in which case the
+  # app CMakeLists adds a cli.h/utils_string.h shim and CONFIG_ZIGBEE_CLI is forced
+  # to 0 (no zigbee CLI command set, since that needs the shell). With the shell ON,
+  # also connect the zigbee CLI commands (set_role, nwk_permit_join, nwk_leave,
+  # zb_auto_rejoin, zb_dump_*, install-code, ...).
+  ifneq ($(origin CONFIG_SHELL),command line)
+    CONFIG_SHELL = y
+  endif
+  ifeq ($(CONFIG_SHELL),y)
+    CONFIG_ZIGBEE_CLI = 1
+  else
+    CONFIG_ZIGBEE_CLI = 0
+  endif
 endif
 
 # =============================================================================
@@ -61,6 +105,15 @@ cmake_definition += -DBL_SDK_BASE=${BL_SDK_BASE}
 cmake_definition += -DCONFIG_WIFI=${CONFIG_WIFI}
 cmake_definition += -DCONFIG_THREAD=${CONFIG_THREAD}
 cmake_definition += -DCONFIG_ETHERNET=${CONFIG_ETHERNET}
+
+# Zigbee (external stack); pin flash size so zigbee_def.cmake matches the app layout.
+cmake_definition += -DCONFIG_ZIGBEE_APP=${CONFIG_ZIGBEE_APP}
+ifeq ($(CONFIG_ZIGBEE_APP),y)
+  cmake_definition += -DCONFIG_ZIGBEE_PATH=$(CONFIG_ZIGBEE_PATH)
+  cmake_definition += -DCONFIG_FLASH_SIZE=0x400000
+  cmake_definition += -DCONFIG_ZIGBEE_CLI=${CONFIG_ZIGBEE_CLI}
+  cmake_definition += -DCONFIG_SHELL=${CONFIG_SHELL}
+endif
 
 # Optional features
 cmake_definition += -DCONFIG_SHELL=${CONFIG_SHELL}

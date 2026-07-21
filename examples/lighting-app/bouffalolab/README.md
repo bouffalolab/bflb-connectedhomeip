@@ -72,14 +72,15 @@ BL702L
 -   **Commissioning**: BLE -> Thread credential provisioning
 -   **SDK**: IoT SDK
 
-### BL616 / BL616CL + Wi-Fi / Thread / Ethernet
+### BL616 / BL616CL + Wi-Fi / Thread / Ethernet / Zigbee
 
 ```
 BL616 / BL616CL
 ├── Network interface
 │   ├── Wi-Fi            ->  Matter over IP (TCP/UDP)
 │   ├── Thread           ->  Matter over Thread (UDP/IPv6)
-│   └── Ethernet         ->  Matter over IP (TCP/UDP)
+│   ├── Ethernet         ->  Matter over IP (TCP/UDP)
+│   └── Zigbee           ->  standalone Zigbee Router (dual-stack with Wi-Fi)
 ├── BLE                  ->  BLE commissioning (PASE over BLE)
 └── Application
     ├── BOOT_PIN_RESET   (GPIO 2 on BL616DK, GPIO 38 on BL616CL)
@@ -88,11 +89,14 @@ BL616 / BL616CL
     └── LED_G_PIN        (GPIO 30) - green PWM channel
 ```
 
--   **Transport**: Wi-Fi, Thread, or Ethernet; exactly one network interface
-    must be enabled for each build.
+-   **Transport**: Wi-Fi, Thread, Ethernet, or Zigbee. Wi-Fi/Thread/Ethernet are
+    Matter transports (exactly one per build). Zigbee is a **standalone** stack that
+    runs **alongside Wi-Fi** as a dual-stack device (see
+    [BL616 Wi-Fi + Zigbee Dual-Stack](#bl616-wi-fi--zigbee-dual-stack)). Thread and
+    Zigbee are mutually exclusive (both use the `lmac154` 802.15.4 radio).
 -   **Commissioning**: BLE for Wi-Fi and Thread; on-network commissioning for
-    Ethernet.
--   **SDK**: `Bouffalo SDK`
+    Ethernet; the dual-stack coordinates Matter/Zigbee commissioning (first wins).
+-   **SDK**: `Bouffalo SDK` (+ external `bouffalo_zigbee` for the Zigbee stack)
 
 ---
 
@@ -258,6 +262,108 @@ Flash with a manufacturing data file:
 ```shell
 make -C examples/lighting-app/bouffalolab CONFIG_WIFI=y flash MFD_FILE=/path/to/mfd.bin
 ```
+
+---
+
+## BL616 Wi-Fi + Zigbee Dual-Stack
+
+BL616 is a Wi-Fi 6 + BLE 5.3 + IEEE 802.15.4 combo chip with a single 2.4 GHz radio
+and a hardware PTA coexistence arbiter. This lets the lighting app run **Matter over
+Wi-Fi** and a standalone **Zigbee** stack at the same time on one chip, time-sharing
+the radio. The Zigbee device type is a **Zigbee Router (ZR)** with an OnOff server
+endpoint, so it can be commissioned into an existing Zigbee network and drive the
+same LED as Matter.
+
+The Zigbee stack is the external, NDA **`bouffalo_zigbee`** tree (the public
+`Bouffalo SDK` ships only the `lmac154` 802.15.4 MAC, not the Zigbee/ZCL layers).
+Point the build at it with `CONFIG_ZIGBEE_PATH`; passing it enables the dual stack.
+
+### Build
+
+Activate the build environment, then build the dual stack (Wi-Fi + Zigbee):
+
+```shell
+source scripts/activate.sh
+make -C examples/lighting-app/bouffalolab CONFIG_WIFI=y \
+    CONFIG_ZIGBEE_PATH=/path/to/bouffalo_zigbee
+```
+
+`CONFIG_ZIGBEE_PATH` is the only required Zigbee flag. From it the build derives the
+internal enable (`CONFIG_ZIGBEE_APP`) and pulls the external Zigbee component in the
+same way the standalone `bouffalo_zigbee` examples do (`add_subdirectory` of the
+external component, **no** modification or symlink inside the `Bouffalo SDK` tree).
+
+Zigbee is mutually exclusive with Thread (both drive the `lmac154` 802.15.4 radio),
+so do **not** combine `CONFIG_ZIGBEE_PATH` with `CONFIG_THREAD=y`.
+
+#### Shell / Zigbee CLI
+
+| Build | Command | Result |
+| ----- | ------- | ------ |
+| Shell ON (default, with Zigbee CLI) | `make ... CONFIG_ZIGBEE_PATH=...` | Matter shell + 154 Zigbee CLI commands (`set_role`, `nwk_permit_join`, `nwk_leave`, `zb_auto_rejoin`, `zb_dump_*`, install-code, ...) |
+| Shell OFF (smaller image) | `make ... CONFIG_ZIGBEE_PATH=... CONFIG_SHELL=n` | No shell / no Zigbee CLI; Zigbee stack still runs. Image is ~350 KB smaller. |
+
+The Zigbee CLI is useful for debugging/controlling the Zigbee stack over UART. For
+production, build with `CONFIG_SHELL=n`.
+
+### Flash
+
+```shell
+make -C examples/lighting-app/bouffalolab CONFIG_WIFI=y \
+    CONFIG_ZIGBEE_PATH=/path/to/bouffalo_zigbee flash
+```
+
+The dual-stack build uses a dedicated partition table
+(`examples/platform/bouffalolab/bflb/flash_config/partition_cfg_4M_zigbee.toml`)
+that adds a `ZB` partition (carved out of `media`) reserved for the Zigbee stack,
+plus a dual-stack linker script derived from `bl616_flash_zigbee.ld.in` (WRAM
+enlarged to 160 KB so the Wi-Fi BSS fits).
+
+### Dual-Stack Startup & Commissioning Coordination
+
+Matter and Zigbee are **mutually exclusive** at the commissioning level: the device
+commits to whichever protocol commissions first, and closes the other. There is no
+cross-protocol state sync (each protocol drives the LED directly while it owns the
+device). The coordination runs at boot and on each commissioning event.
+
+**At boot** (`InitZigbeePlatform`, after Matter `Server::Init`), it reads both
+persisted states — `Matter commissioned = (FabricCount > 0)` and `Zigbee joined =
+zb_isJoined()`:
+
+| Boot state | Matter | Zigbee | WiFi/Zigbee coex |
+| ---------- | ------ | ------ | ---------------- |
+| Matter already commissioned | operational | **not started** (no `zb_start`) | not enabled |
+| Zigbee already joined | commissionable window **closed** | resumes network | not enabled |
+| Neither (factory-new) | commissionable | joins as **Zigbee Router** | **enabled** (dual commissioning window) |
+
+**During the dual commissioning window** (factory-new device), both protocols are
+active. The WiFi/Zigbee coexistence (WiFi duty-cycling to time-share the radio) is
+turned on, and whichever side completes first wins:
+
+- **Matter commissions first** → the Zigbee join is stopped
+  (`bZigbeeAutoRejoin = false` + cancel the join-retry timer) and coex is disabled.
+- **Zigbee joins first** → the Matter commissionable window is closed (so the device
+  stops advertising commissionable) and coex is disabled.
+
+Either way, once one protocol owns the device, coex is disabled (only one radio user
+remains) and the LED responds to that protocol only.
+
+**LED control**: each protocol drives the shared LED directly while it owns the
+device. A Matter OnOff command updates the LED through the Matter attribute path; a
+Zigbee ZCL OnOff command (`zcl_dispatchClusterEvent`) calls `AppSetLightOnOff` → the
+same LED.
+
+**Factory reset** (button long-press, or removing the last Matter fabric) clears
+**both** stacks before rebooting: Matter KVS + the Zigbee persistent state
+(`zb_fullFactoryReset`, which erases network keys, frame counters, and commissioning
+data). After reset + reboot, both are factory-new and the dual commissioning window
+opens again.
+
+Watch the serial log for the `Coord: ...` lines to trace the coordination, and the
+`Heap[...]: SRAM free=...` lines to monitor SRAM pressure at each milestone
+(startup, Matter commissioned, Zigbee joined).
+
+---
 
 ## Test with chip-tool
 

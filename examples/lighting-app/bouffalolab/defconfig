@@ -89,3 +89,15 @@ ifeq ($(CONFIG_THREAD),y)
   CONFIG_LMAC154                           = y
   CONFIG_THREAD                            = y
 endif
+
+# Zigbee drives lmac154 via the external bouffalo_zigbee stack. The zigbee stack
+# requires its own linker script (bl616_flash_zigbee.ld.in) which places the
+# nwk_preprocess / c7b_* sections; the app CMakeLists derives a dual-stack variant
+# (WRAM enlarged to 160K for the WiFi BSS) and selects it via CONFIG_CUSTOM_LINKSCRIPT.
+# CONFIG_RF is already y via the WIFI block (Zigbee dual-stack = WIFI + ZIGBEE).
+ifeq ($(CONFIG_ZIGBEE_APP),y)
+  CONFIG_LMAC154                           = y
+  CONFIG_CUSTOM_LINKSCRIPT                 = y
+  CONFIG_ZBSTACK_DEBUG                     ?= 0
+endif
+CONFIG_GCC_OPTIMISE_LEVEL                  = -Os

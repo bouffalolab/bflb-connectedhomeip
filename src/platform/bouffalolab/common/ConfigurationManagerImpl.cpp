@@ -29,6 +29,13 @@ extern "C" {
 extern "C" void hal_reboot(void);
 #endif
 
+#if CONFIG_ZIGBEE_APP
+// bouffalo_zigbee full factory reset (erases network keys / frame counters /
+// tables). Declared with C linkage; the actual zbRet_t return (uint32_t) is
+// ABI-compatible with int and ignored here.
+extern "C" int zb_fullFactoryReset(void);
+#endif
+
 #if CHIP_DEVICE_CONFIG_ENABLE_ETHERNET
 extern "C" struct netif * deviceInterface_getNetif(void);
 #endif
@@ -213,6 +220,14 @@ void ConfigurationManagerImpl::DoFactoryReset(intptr_t arg)
 
 #if CHIP_DEVICE_CONFIG_ENABLE_THREAD
     ThreadStackMgr().ErasePersistentInfo();
+#endif
+
+#if CONFIG_ZIGBEE_APP
+    // Erase the external bouffalo_zigbee persistent state (network keys, frame
+    // counters, device/binding/commissioning tables) so the device is factory-new
+    // on reboot and the Matter<->Zigbee coordination state is consistent.
+    zb_fullFactoryReset();
+    ChipLogProgress(DeviceLayer, "Erased Zigbee persistent state");
 #endif
 
     err = BflbConfig::FactoryResetConfig();

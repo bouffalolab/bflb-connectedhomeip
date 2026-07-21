@@ -32,15 +32,30 @@ set(GN_ROOT_TARGET      ${CMAKE_CURRENT_LIST_DIR})
 set(Python3_EXECUTABLE "${CHIP_ROOT}/.environment/pigweed-venv/bin/python3"
     CACHE FILEPATH "Python3 executable" FORCE)
 
-if(CONFIG_MFD STREQUAL "y")
+if(CONFIG_MFD STREQUAL "y" OR CONFIG_ZIGBEE_APP STREQUAL "y")
   get_filename_component(_bl_sdk_base "${BL_SDK_BASE}" REALPATH)
   set(_matter_board_dir "${CMAKE_BINARY_DIR}/matter_board")
   set(_sdk_board_config_dir "${_bl_sdk_base}/bsp/board/${BOARD}/config")
   file(MAKE_DIRECTORY "${_matter_board_dir}/config")
   file(COPY "${_sdk_board_config_dir}/" DESTINATION "${_matter_board_dir}/config")
-  file(COPY "${EXAMPLES_PLAT_DIR}/bflb/flash_config/partition_cfg_4M.toml"
-       DESTINATION "${_matter_board_dir}/config")
+  # Pick the partition table: the dedicated zigbee variant (adds a ZB/PSB partition)
+  # when CONFIG_ZIGBEE_APP=y, otherwise the standard one. Lands as partition_cfg_4M.toml
+  # (the name the SDK firmware tool expects) in the custom board config dir.
+  if(CONFIG_ZIGBEE_APP STREQUAL "y")
+    set(_partition_cfg "${EXAMPLES_PLAT_DIR}/bflb/flash_config/partition_cfg_4M_zigbee.toml")
+  else()
+    set(_partition_cfg "${EXAMPLES_PLAT_DIR}/bflb/flash_config/partition_cfg_4M.toml")
+  endif()
+  # Overwrite the SDK's partition_cfg_4M.toml (copied above) with our selected
+  # variant. READ+WRITE is used because file(COPY ... RENAME) does not reliably
+  # replace an existing file in this CMake version.
+  file(READ "${_partition_cfg}" _partition_cfg_content)
+  file(WRITE "${_matter_board_dir}/config/partition_cfg_4M.toml" "${_partition_cfg_content}")
 endif()
+
+# =============================================================================
+# SDK Setup
+# =============================================================================
 
 # =============================================================================
 # SDK Setup
@@ -49,9 +64,47 @@ endif()
 find_package(bouffalo_sdk REQUIRED HINTS $ENV{BL_SDK_BASE} ${BL_SDK_BASE})
 include(${EXAMPLES_PLAT_DIR}/bflb/bflb_common.cmake)
 
-# Use the Matter partition table when factory data is enabled so the SDK
-# post-processing step emits a partition.bin with the MFD partition.
-if(CONFIG_MFD STREQUAL "y")
+# Zigbee (external NDA stack from CONFIG_ZIGBEE_PATH).
+#
+# The build flag is CONFIG_ZIGBEE_APP (NOT CONFIG_ZIGBEE): the SDK reserves
+# CONFIG_ZIGBEE to mean "zigbee shipped inside the SDK" and would try to
+# add_subdirectory it during find_package. We deliberately avoid that name and, like
+# the standalone zigbee examples, pull the external component ourselves with
+# add_subdirectory after find_package -- no symlink into the SDK tree is needed.
+#
+# The zigbee stack requires bl616_flash_zigbee.ld.in (places the nwk_preprocess /
+# c7b_* sections; bl616_common.ld.in lacks this -> store fault in zb_initFlashCache).
+# That script hardcodes WRAM=32K (too small for the WiFi BSS), so generate a
+# dual-stack variant with WRAM=160K (matches bl616_common for WiFi6). Needs
+# CONFIG_CUSTOM_LINKSCRIPT=y (set in defconfig when CONFIG_ZIGBEE_APP=y).
+# Also: tolerate the bignum_* dup between libecdsa.a and wpa_supplicant, and
+# force-pull the WiFi coex symbols (the fhost archive is scanned before app objects).
+if(CONFIG_ZIGBEE_APP STREQUAL "y")
+  get_filename_component(CONFIG_ZIGBEE_PATH "${CONFIG_ZIGBEE_PATH}" REALPATH)
+  if(NOT EXISTS "${CONFIG_ZIGBEE_PATH}/components/wireless/zigbee/CMakeLists.txt")
+    message(FATAL_ERROR "CONFIG_ZIGBEE_APP=y but CONFIG_ZIGBEE_PATH is invalid "
+      "(no components/wireless/zigbee/CMakeLists.txt): ${CONFIG_ZIGBEE_PATH}")
+  endif()
+  add_subdirectory("${CONFIG_ZIGBEE_PATH}/components/wireless/zigbee" "${CMAKE_CURRENT_BINARY_DIR}/zigbee_ext")
+
+  set(_zigbee_ld_in "${BL_SDK_BASE}/bsp/board/${BOARD}/bl616_flash_zigbee.ld.in")
+  file(READ "${_zigbee_ld_in}" _zigbee_ld)
+  string(REPLACE "0x23038000 - 32K - __EM_SIZE" "0x23038000 - (160 * 1024) - __EM_SIZE" _zigbee_ld "${_zigbee_ld}")
+  string(REPLACE "#define CONFIG_WRAM_LENGTH 32K" "#define CONFIG_WRAM_LENGTH (160 * 1024)" _zigbee_ld "${_zigbee_ld}")
+  set(_dualstack_ld "${CMAKE_BINARY_DIR}/bl616_flash_zigbee_dualstack.ld.in")
+  file(WRITE "${_dualstack_ld}" "${_zigbee_ld}")
+  sdk_set_linker_script_macro("${_dualstack_ld}")
+  sdk_add_compile_definitions(-DBOUFFALO_SDK)
+  sdk_add_link_options(-Wl,--allow-multiple-definition)
+  sdk_add_link_options(-Wl,--undefined=wifi_mgmr_sta_coex_enable)
+  sdk_add_link_options(-Wl,--undefined=wifi_mgmr_sta_coex_disable)
+  sdk_add_link_options(-Wl,--undefined=wifi_mgmr_sta_coex_duty_set)
+endif()
+
+# Use a custom board config dir (carrying our partition table) when factory data
+# or Zigbee is enabled, so the SDK post-processing emits a matching partition.bin
+# (MFD partition for factory data; ZB partition for the zigbee PSB).
+if(CONFIG_MFD STREQUAL "y" OR CONFIG_ZIGBEE_APP STREQUAL "y")
   set_property(GLOBAL PROPERTY FW_TOOL_CUSTOM_BOARD_DIR "${_matter_board_dir}")
 endif()
 
@@ -141,6 +194,12 @@ matter_add_flags(-Wno-conversion)
 matter_add_flags(-Wno-maybe-uninitialized)
 matter_add_flags(-Wno-shadow)
 matter_add_flags(-Wno-sign-compare)
+
+if(CONFIG_ZIGBEE_APP STREQUAL "y")
+  # Visible to the GN-built chip lib (e.g. ConfigurationManagerImpl.cpp erases the
+  # zigbee persistent state in DoFactoryReset) and forces a chip-lib rebuild.
+  matter_add_flags(-DCONFIG_ZIGBEE_APP=1)
+endif()
 
 list(APPEND MATTER_CFLAGS_C
   -I${CHIP_ROOT}/src/platform/bouffalolab/BFLB)
@@ -269,6 +328,15 @@ endif()
 if(CONFIG_WIFI STREQUAL "y")
   sdk_add_include_directories(${EXAMPLE_DIR}/bflb/wifi)
 endif()
+if(CONFIG_ZIGBEE_APP STREQUAL "y")
+  sdk_add_include_directories(${EXAMPLES_PLAT_DIR}/common/zigbee)
+  if(NOT CONFIG_SHELL STREQUAL "y")
+    # Shell off: zbapp_otaServerHandler.c falls back to legacy cli.h/utils_string.h
+    # (absent from the SDK). Provide empty shims so the includes resolve; the OTA CLI
+    # commands are dropped via CONFIG_ZIGBEE_CLI=0 in that case.
+    sdk_add_include_directories(${EXAMPLES_PLAT_DIR}/common/zigbee/shim)
+  endif()
+endif()
 
 # =============================================================================
 # Compile Definitions
@@ -302,6 +370,8 @@ endif()
 if(CONFIG_MFD STREQUAL "y")
   list(APPEND _COMMON_DEFS CONFIG_BOUFFALOLAB_FACTORY_DATA_ENABLE=1)
 endif()
+# CONFIG_ZIGBEE_APP is propagated to C/C++ as a macro via the SDK's autoconf.h
+# (CONFIG_ZIGBEE_APP=y -> #define CONFIG_ZIGBEE_APP 1), so no explicit -D is needed here.
 
 target_compile_definitions(app PRIVATE ${_COMMON_DEFS})
 target_compile_options(app PRIVATE
@@ -365,6 +435,12 @@ endif()
 if(CONFIG_CHIP_HEAP_MONITOR STREQUAL "y")
   target_sources(app PRIVATE
     ${EXAMPLES_PLAT_DIR}/common/plat/MemMonitoring.cpp
+  )
+endif()
+
+if(CONFIG_ZIGBEE_APP STREQUAL "y")
+  target_sources(app PRIVATE
+    ${EXAMPLES_PLAT_DIR}/common/zigbee/ZigbeeStackMgr.cpp
   )
 endif()
 

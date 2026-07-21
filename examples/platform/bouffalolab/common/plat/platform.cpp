@@ -76,6 +76,10 @@
 #include <AppTask.h>
 #include <plat.h>
 
+#if CONFIG_ZIGBEE_APP
+#include "ZigbeeStackMgr.h"
+#endif
+
 using namespace ::chip;
 using namespace ::chip::app;
 using namespace ::chip::Credentials;
@@ -137,6 +141,13 @@ void ChipEventHandler(const ChipDeviceEvent * event, intptr_t arg)
 
             bflb_route_hook_init();
 
+#if CONFIG_ZIGBEE_APP && CHIP_DEVICE_CONFIG_ENABLE_WIFI
+            // Enable WiFi/Zigbee coex only during the dual commissioning window
+            // (neither side owns the device yet). The coordination code disables
+            // coex once Matter commissions or Zigbee joins (single radio user).
+            EnableWifiCoexIfNeeded();
+#endif
+
             chip::DeviceLayer::SystemLayer().StartTimer(chip::System::Clock::Seconds32(OTAConfig::kInitOTARequestorDelaySec),
                                                         OTAConfig::InitOTARequestorHandler, nullptr);
         }
@@ -169,6 +180,10 @@ void ChipEventHandler(const ChipDeviceEvent * event, intptr_t arg)
     case DeviceEventType::kCommissioningComplete:
         ChipLogProgress(NotSpecified, "Commissioning complete");
         GetAppTask().PostEvent(AppTask::APP_EVENT_COMMISSION_COMPLETE);
+#if CONFIG_ZIGBEE_APP
+        // Matter now owns the device -> disallow Zigbee joining.
+        OnMatterCommissioned();
+#endif
         break;
     default:
         break;
@@ -324,6 +339,13 @@ CHIP_ERROR PlatformManagerImpl::PlatformInit(void)
     ChipLogProgress(NotSpecified, "Starting OpenThread task");
     // Start OpenThread task
     ReturnLogErrorOnFailure(ThreadStackMgrImpl().StartThreadTask());
+#endif
+
+#if CONFIG_ZIGBEE_APP
+    // Bring up the external Zigbee stack as a Router on lmac154 (coexists with
+    // WiFi via the SDK PTA). WiFi firmware task is already running by this point.
+    ChipLogProgress(NotSpecified, "Starting Zigbee stack (dual-stack with WiFi)");
+    InitZigbeePlatform();
 #endif
 
     ConfigurationMgr().LogDeviceConfig();
