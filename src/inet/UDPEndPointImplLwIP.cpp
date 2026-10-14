@@ -176,7 +176,10 @@ CHIP_ERROR UDPEndPointImplLwIP::SendMsgImpl(const IPPacketInfo * pktInfo, System
     ip_addr_t boundAddr;
     ip_addr_copy(boundAddr, mUDP->local_ip);
 
-    if (!ip_addr_isany(&lwipSrcAddr))
+    // ip_addr_isany_val() is the value-based variant of ip_addr_isany() and
+    // performs no NULL-pointer check on its argument; the address-of based
+    // form trips GCC 14 -Waddress for an automatic storage duration object.
+    if (!ip_addr_isany_val(lwipSrcAddr))
     {
         ip_addr_copy(mUDP->local_ip, lwipSrcAddr);
     }
