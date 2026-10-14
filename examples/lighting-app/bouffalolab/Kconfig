@@ -1,0 +1,30 @@
+# Application-level switches for the Matter examples.
+#
+# The bouffalo_sdk strict Kconfig flow (tools/kconfig/config_seed.py) treats
+# any assignment to an undefined symbol as a build error, so every CONFIG_*
+# variable exported by the example Makefile must be declared here or in the
+# SDK Kconfig. The SDK Kconfig does not know these application selectors.
+
+mainmenu "Matter example configuration"
+
+config WIFI
+	bool "Matter over Wi-Fi"
+	default n
+
+config ETHERNET
+	bool "Matter over Ethernet"
+	default n
+
+config MFD
+	bool "Manufacturing data partition"
+	default n
+
+config CHIP_HEAP_MONITOR
+	bool "Matter heap monitor"
+	default n
+
+config CHIP_ROTATING_DEVICE_ID
+	bool "Matter rotating device ID"
+	default n
+
+source "$BL_SDK_BASE/Kconfig"

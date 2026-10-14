@@ -36,8 +36,9 @@ endif
 # Thread Configuration
 # =============================================================================
 
-CONFIG_OT_FTD ?= 1
-CONFIG_OT_MTD ?= 0
+# Values must be valid Kconfig bool assignments (y/n)
+CONFIG_OT_FTD ?= y
+CONFIG_OT_MTD ?= n
 
 # =============================================================================
 # Optional Features
@@ -56,6 +57,16 @@ CONFIG_COREDUMP                ?= n
 # Basic
 cmake_definition += -DCHIP_ROOT=${CHIP_ROOT}
 cmake_definition += -DBL_SDK_BASE=${BL_SDK_BASE}
+# CHIP/BOARD must resolve before find_package(bouffalo_sdk) loads the
+# generated configuration (the bouffalo_sdk >= 2.3.3x build does not pass
+# them on the cmake command line itself).
+cmake_definition += -DCHIP=${CHIP}
+cmake_definition += -DBOARD=${BOARD}
+# The bouffalo_sdk >= 2.3.3x wireless sub-builds compile the BLE controller
+# from source with the FreeRTOS port glue; their only application include
+# directory is the example root (SDK_DEMO_PATH). The FreeRTOS configuration
+# lives in bflb/, so propagate it to the sub-builds.
+cmake_definition += -DCMAKE_C_FLAGS=-I$(abspath bflb)
 
 # Network interface
 cmake_definition += -DCONFIG_WIFI=${CONFIG_WIFI}

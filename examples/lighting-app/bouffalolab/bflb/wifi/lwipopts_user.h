@@ -148,11 +148,18 @@
 #endif
 #define LWIP_RAND() ((u32_t) random())
 
+/* picolibc (Zephyr SDK GCC) already defines errno as a macro through
+ * <errno.h>; redefining it here would trip -Werror. Only supply the
+ * thread-local errno binding when the libc does not provide one.
+ */
+#include <errno.h>
+#ifndef errno
 #ifdef __cplusplus
 extern "C" int * __errno(void);
 #else
 extern int * __errno(void);
 #endif
 #define errno (*__errno())
+#endif
 
 #endif /* LWIP_HDR_LWIPOPTS_H__ */

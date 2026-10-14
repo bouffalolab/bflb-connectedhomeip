@@ -66,11 +66,6 @@ if(_sdk_iface_opts)
 endif()
 sdk_add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-fno-use-cxa-atexit>)
 
-# Fix SDK options that conflict with the Matter application.
-get_target_property(_sdk_link_opts sdk_intf_lib INTERFACE_LINK_OPTIONS)
-list(REMOVE_ITEM _sdk_link_opts -nostartfiles)
-set_target_properties(sdk_intf_lib PROPERTIES INTERFACE_LINK_OPTIONS "${_sdk_link_opts}")
-
 # =============================================================================
 # Matter CMake Setup
 # =============================================================================
@@ -154,8 +149,8 @@ list(APPEND MATTER_CFLAGS_CC
 list(APPEND MATTER_CFLAGS_C  -I${EXAMPLE_DIR}/bflb)
 list(APPEND MATTER_CFLAGS_CC -I${EXAMPLE_DIR}/bflb)
 
-list(APPEND MATTER_CFLAGS_C  -include ${CMAKE_BINARY_DIR}/generated/autoconf.h)
-list(APPEND MATTER_CFLAGS_CC -include ${CMAKE_BINARY_DIR}/generated/autoconf.h)
+list(APPEND MATTER_CFLAGS_C  -include ${CMAKE_BINARY_DIR}/generated/autoconfig.h)
+list(APPEND MATTER_CFLAGS_CC -include ${CMAKE_BINARY_DIR}/generated/autoconfig.h)
 
 list(APPEND MATTER_CFLAGS_C  -UMBEDTLS_NET_C)
 list(APPEND MATTER_CFLAGS_CC -UMBEDTLS_NET_C)
@@ -231,8 +226,22 @@ matter_add_gn_arg_bool("chip_enable_factory_data" CONFIG_MFD STREQUAL "y")
 matter_add_gn_arg_bool("chip_enable_additional_data_advertising" CONFIG_CHIP_ROTATING_DEVICE_ID STREQUAL "y")
 matter_add_gn_arg_bool("chip_enable_rotating_device_id"          CONFIG_CHIP_ROTATING_DEVICE_ID STREQUAL "y")
 
-matter_add_gn_arg_string("cross_compile" "${CROSS_COMPILE}")
+# The Matter library (GN) must use the same compiler family as the main
+# SDK build that links it. With TOOLCHAIN=zephyr-gcc the main build selects
+# the Zephyr SDK GCC while CROSS_COMPILE stays on the T-Head prefix for the
+# wireless sub-builds (library.mk), so derive the GN cross_compile from the
+# compiler actually selected by the SDK toolchain file.
+get_filename_component(_bflb_cc_name "${CMAKE_C_COMPILER}" NAME)
+string(REGEX REPLACE "gcc(-.*)?$" "" _bflb_gn_cross_compile "${_bflb_cc_name}")
+matter_add_gn_arg_string("cross_compile" "${_bflb_gn_cross_compile}")
 matter_add_gn_arg_list("chip_project_config_include_dirs" "\"${EXAMPLE_DIR}/bflb\"")
+
+if(TOOLCHAIN STREQUAL "zephyr-gcc")
+  # The Zephyr SDK GCC ships picolibc only and resolves pthread.h (pulled in
+  # by libstdc++ and Matter headers) exclusively with picolibc.specs. The GN
+  # step compiles but does not link, so the specs are needed as compile flags.
+  matter_add_flags(--specs=picolibc.specs)
+endif()
 
 bflb_remove_lto()
 

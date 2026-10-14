@@ -18,6 +18,8 @@
 #ifndef __DEMO_PWM__
 #define __DEMO_PWM__
 
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
