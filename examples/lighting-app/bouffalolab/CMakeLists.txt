@@ -227,20 +227,30 @@ matter_add_gn_arg_bool("chip_enable_additional_data_advertising" CONFIG_CHIP_ROT
 matter_add_gn_arg_bool("chip_enable_rotating_device_id"          CONFIG_CHIP_ROTATING_DEVICE_ID STREQUAL "y")
 
 # The Matter library (GN) must use the same compiler family as the main
-# SDK build that links it. With TOOLCHAIN=zephyr-gcc the main build selects
-# the Zephyr SDK GCC while CROSS_COMPILE stays on the T-Head prefix for the
-# wireless sub-builds (library.mk), so derive the GN cross_compile from the
-# compiler actually selected by the SDK toolchain file.
+# SDK build that links it. The SDK selects the compiler purely through
+# CROSS_COMPILE (BL616 defaults to riscv64-zephyr-elf-), so derive the GN
+# cross_compile from the compiler actually selected by the SDK toolchain
+# file.
 get_filename_component(_bflb_cc_name "${CMAKE_C_COMPILER}" NAME)
 string(REGEX REPLACE "gcc(-.*)?$" "" _bflb_gn_cross_compile "${_bflb_cc_name}")
 matter_add_gn_arg_string("cross_compile" "${_bflb_gn_cross_compile}")
 matter_add_gn_arg_list("chip_project_config_include_dirs" "\"${EXAMPLE_DIR}/bflb\"")
 
-if(TOOLCHAIN STREQUAL "zephyr-gcc")
-  # The Zephyr SDK GCC ships picolibc only and resolves pthread.h (pulled in
-  # by libstdc++ and Matter headers) exclusively with picolibc.specs. The GN
-  # step compiles but does not link, so the specs are needed as compile flags.
-  matter_add_flags(--specs=picolibc.specs)
+# Mirror the SDK toolchain probe (cmake/toolchain.cmake): on BL616 the SDK
+# enables picolibc whenever the selected compiler ships picolibc.specs.
+# The GN step compiles but does not link, so it needs the same libc
+# configuration as compile flags: picolibc.specs for pthread.h (pulled in
+# by libstdc++ and Matter headers), and _DEFAULT_SOURCE for the POSIX/BSD
+# declarations (strlcpy, ...) that newlib exposes by default.
+execute_process(
+  COMMAND ${CMAKE_C_COMPILER} -print-file-name=picolibc.specs
+  OUTPUT_VARIABLE _bflb_picolibc_specs
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+  ERROR_QUIET
+)
+if(IS_ABSOLUTE "${_bflb_picolibc_specs}" AND EXISTS "${_bflb_picolibc_specs}")
+  matter_add_flags(--specs=${_bflb_picolibc_specs})
+  matter_add_flags(-D_DEFAULT_SOURCE)
 endif()
 
 bflb_remove_lto()
