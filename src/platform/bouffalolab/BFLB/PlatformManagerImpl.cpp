@@ -44,6 +44,9 @@
 #include <bflb_sec_trng.h>
 extern "C" {
 #include <partition.h>
+#if CHIP_DEVICE_CONFIG_ENABLE_ETHERNET
+#include <lwip_emac_start.h>
+#endif
 #if CHIP_DEVICE_CONFIG_ENABLE_WIFI || CHIP_DEVICE_CONFIG_ENABLE_THREAD
 #include <rfparam_adapter.h>
 #endif
@@ -70,7 +73,11 @@ CHIP_ERROR PlatformManagerImpl::_InitChipStack(void)
     VerifyOrDieWithMsg(0 == (iret_rfInit = rfparam_init(0, NULL, 0)), DeviceLayer, "rfparam_init failed with %d", iret_rfInit);
 #endif
 
-#if CHIP_SYSTEM_CONFIG_USE_LWIP
+#if CHIP_DEVICE_CONFIG_ENABLE_ETHERNET
+    // The SDK startup owns EMAC contexts, DMA pools, DHCP and PHY polling,
+    // and initializes lwIP itself. Do not start a second tcpip thread here.
+    VerifyOrReturnError(lwip_emac_start(nullptr, 0) == 0, CHIP_ERROR_INTERNAL);
+#elif CHIP_SYSTEM_CONFIG_USE_LWIP
     tcpip_init(NULL, NULL);
 #endif
 

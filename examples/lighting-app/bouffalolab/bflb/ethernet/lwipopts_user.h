@@ -141,12 +141,15 @@ a lot of data that needs to be copied, this should be set high. */
 #define LWIP_ERRNO_STDINCLUDE 1
 #define LWIP_SOCKET_SET_ERRNO 1
 
+#include <errno.h>
+#ifndef errno
 #ifdef __cplusplus
 extern "C" int * __errno(void);
 #else
 extern int * __errno(void);
 #endif
 #define errno (*__errno())
+#endif
 #define LWIP_RAND() ((u32_t) random())
 
 /* ---------- link callback options ---------- */

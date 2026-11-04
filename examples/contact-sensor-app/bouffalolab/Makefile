@@ -4,7 +4,7 @@
 
 SDK_DEMO_PATH ?= $(abspath .)
 CHIP_ROOT      = ../../..
-BL_SDK_BASE    = ${CHIP_ROOT}/third_party/bouffalolab/repo_bouffalo_sdk
+BL_SDK_BASE   ?= ${CHIP_ROOT}/third_party/bouffalolab/repo_bouffalo_sdk
 export BL_SDK_BASE
 
 CROSS_COMPILE ?= riscv64-unknown-elf-
@@ -45,6 +45,11 @@ CONFIG_COREDUMP                ?= n
 
 cmake_definition += -DCHIP_ROOT=${CHIP_ROOT}
 cmake_definition += -DBL_SDK_BASE=${BL_SDK_BASE}
+cmake_definition += -DCHIP=${CHIP}
+cmake_definition += -DBOARD=${BOARD}
+# The SDK builds the BLE controller as a separate CMake project. Propagate the
+# application FreeRTOS configuration to that C-only sub-build.
+cmake_definition += -DCMAKE_C_FLAGS=-I$(abspath bflb)
 cmake_definition += -DCONFIG_WIFI=y
 
 cmake_definition += -DCONFIG_SHELL=${CONFIG_SHELL}

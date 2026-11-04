@@ -4,13 +4,11 @@
 
 SDK_DEMO_PATH ?= $(abspath .)
 CHIP_ROOT      = ../../..
-BL_SDK_BASE    = ${CHIP_ROOT}/third_party/bouffalolab/repo_bouffalo_sdk
+BL_SDK_BASE   ?= ${CHIP_ROOT}/third_party/bouffalolab/repo_bouffalo_sdk
 export BL_SDK_BASE
 
-# CROSS_COMPILE is not defaulted here on purpose: the SDK board.build
-# selects the per-chip default (riscv64-zephyr-elf- for BL616/BL616CL/
-# BL618DG). Pass CROSS_COMPILE=riscv64-unknown-elf- for the T-Head GCC
-# build.
+# The SDK board.build selects the default riscv64-unknown-elf- Zephyr GCC
+# toolchain. Pass CROSS_COMPILE explicitly only for another compatible toolchain.
 
 # =============================================================================
 # Target Chip & Board
@@ -97,8 +95,11 @@ endif
 
 # Ethernet-specific: eth_phy and lwip EMAC driver, needed by NetworkCommissioningEthernetDriver
 ifeq ($(CONFIG_ETHERNET),y)
-  cmake_definition += -DCONFIG_BSP_ETH_PHY=y
-  cmake_definition += -DCONFIG_BSP_LWIP_NETIF_EMAC=y
+  CONFIG_BSP_ETH_PHY = y
+  CONFIG_BSP_LWIP_NETIF_EMAC = y
+  CONFIG_BSP_LWIP_EMAC_START = y
+  # SDK EMAC startup reads the factory MAC through the RF manufacturing API.
+  CONFIG_RF = y
 endif
 
 # =============================================================================

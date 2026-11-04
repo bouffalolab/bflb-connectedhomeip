@@ -213,6 +213,15 @@ Build BL616DK with Ethernet:
 make -C examples/lighting-app/bouffalolab CONFIG_ETHERNET=y
 ```
 
+For Ethernet, the SDK's `lwip_emac_start()` initializes lwIP, the configured
+EMAC/PHY port, DMA buffers, DHCP, and link polling. Matter uses the resulting
+default interface and adds IPv6 autoconfiguration and connectivity notifications.
+The build enables `CONFIG_RF` because the SDK obtains the factory MAC address
+through its manufacturing API, as in the SDK's own EMAC example.
+The board's RMII/MDIO wiring must match its SDK port configuration. Network
+commissioning shutdown removes Matter's callback; the SDK interface remains
+running for the lifetime of the application.
+
 Build BL616CL with Wi-Fi:
 
 ```shell
@@ -225,6 +234,44 @@ Build with optional features:
 make -C examples/lighting-app/bouffalolab CONFIG_WIFI=y CONFIG_SHELL=y
 make -C examples/lighting-app/bouffalolab CONFIG_WIFI=y CONFIG_MFD=n
 ```
+
+Use `BL_SDK_BASE` to select an SDK checkout and `CROSS_COMPILE` to select a
+compatible toolchain prefix (either a command prefix on `PATH` or an absolute
+path). Configuration prints the SDK compiler paths, ISA/ABI, and resolved Matter
+GN tool paths and versions.
+
+For the `build_examples.py` entry point, export the same SDK and toolchain:
+
+```shell
+export BL_SDK_BASE=/path/to/bouffalo_sdk
+export CROSS_COMPILE=/path/to/toolchain/bin/riscv64-unknown-elf-
+./scripts/build/build_examples.py --target bouffalolab-bl616dk-light-wifi-littlefs build
+```
+
+Use the SDK with build-local Kconfig generation (`generated/autoconfig.h`) and
+the compatible GCC 14.3/Picolibc toolchain. The older SDK 2.3.27 checkout does not
+provide this configuration pipeline. Without `BL_SDK_BASE`, the example uses
+`third_party/bouffalolab/repo_bouffalo_sdk`. Without `CROSS_COMPILE`, the builder
+looks for `riscv64-unknown-elf-gcc` on `PATH` before checking legacy installations
+under `BOUFFALOLAB_SDK_ROOT`.
+
+The builder exposes ELF/BIN and OTA outputs under `out/<target>/`. Its generated
+`chip-bl616-lighting-example.flash.py --port <device>` invokes the selected SDK's
+`make flash` with the original build directory and SDK-packaged images.
+Append `-mfd` to the target to enable factory data.
+
+The SDK owns startup, final linking, and packaging. Matter GN artifacts are kept
+in the build directory's `matter-gn/` child directory and use that build's
+`generated/autoconfig.h`. Use a distinct absolute `BUILD_DIR` for each parallel
+build or configuration.
+Use a new build directory or run `clean` when changing the toolchain or CMake
+generator.
+
+SDK startup initializes libc TLS. For these Matter examples, the SDK's generic
+pre-main constructor wrapper is disabled: `platform_port_init()` initializes
+the board, heap, console, and storage, then runs C++ global constructors once.
+Constructors may allocate memory or create FreeRTOS objects, so they must not
+run before board initialization.
 
 #### Optional Features
 

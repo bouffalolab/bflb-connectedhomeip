@@ -48,6 +48,11 @@ endif()
 
 find_package(bouffalo_sdk REQUIRED HINTS $ENV{BL_SDK_BASE} ${BL_SDK_BASE})
 include(${EXAMPLES_PLAT_DIR}/bflb/bflb_common.cmake)
+bflb_defer_constructors_to_platform_init()
+
+# GN owns only its child directory; SDK configuration remains build-local.
+set(MATTER_GN_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/matter-gn")
+set(_matter_sdk_config_header "${CMAKE_BINARY_DIR}/generated/autoconfig.h")
 
 # Use the Matter partition table when factory data is enabled so the SDK
 # post-processing step emits a partition.bin with the MFD partition.
@@ -66,11 +71,8 @@ if(_sdk_iface_opts)
   set_target_properties(sdk_intf_lib PROPERTIES INTERFACE_COMPILE_OPTIONS "${_sdk_iface_opts}")
 endif()
 sdk_add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-fno-use-cxa-atexit>)
-
-# Fix SDK options that conflict with the Matter application.
-get_target_property(_sdk_link_opts sdk_intf_lib INTERFACE_LINK_OPTIONS)
-list(REMOVE_ITEM _sdk_link_opts -nostartfiles)
-set_target_properties(sdk_intf_lib PROPERTIES INTERFACE_LINK_OPTIONS "${_sdk_link_opts}")
+# The SDK owns startup, TLS initialization and C++ constructor dispatch.
+# Retain its -nostartfiles rather than linking a second toolchain crt0.
 
 # Example-specific include directories (must be after find_package)
 sdk_add_include_directories(
@@ -81,6 +83,7 @@ sdk_add_include_directories(
   ${BL_SDK_BASE}/drivers/soc/${CHIP}/std/include
   ${BL_SDK_BASE}/drivers/soc/${CHIP}/std/include/hardware
   ${BL_SDK_BASE}/drivers/sys/${CHIP}
+  ${BL_SDK_BASE}/components/wireless/matter/mfd/include
 )
 
 # =============================================================================
@@ -97,7 +100,7 @@ include(${CHIP_ROOT}/src/app/chip_data_model.cmake)
 # =============================================================================
 
 get_target_property(_sdk_opts sdk_intf_lib INTERFACE_COMPILE_OPTIONS)
-get_target_property(_sdk_defs sdk_intf_lib INTERFACE_COMPILE_DEFINITIONS)
+bflb_get_sdk_definitions(_sdk_defs)
 get_target_property(_sdk_incs sdk_intf_lib INTERFACE_INCLUDE_DIRECTORIES)
 
 if(_sdk_opts)
@@ -140,6 +143,12 @@ list(FILTER MATTER_CFLAGS    EXCLUDE REGEX "^-Wno-unknown-warning-option$")
 list(FILTER MATTER_CFLAGS_C  EXCLUDE REGEX "^-Wno-unknown-warning-option$")
 list(FILTER MATTER_CFLAGS_CC EXCLUDE REGEX "^-Wno-unknown-warning-option$")
 
+# GCC 14 diagnoses lwIP NULL checks after separate preprocessing with
+# -save-temps. Keep the SDK's diagnostic option out of Matter compilation.
+foreach(_flags MATTER_CFLAGS MATTER_CFLAGS_C MATTER_CFLAGS_CC)
+  list(FILTER ${_flags} EXCLUDE REGEX "^-save-temps(=.*)?$")
+endforeach()
+
 # =============================================================================
 # Matter Flags
 # =============================================================================
@@ -164,8 +173,8 @@ list(APPEND MATTER_CFLAGS_CC -I${EXAMPLE_DIR}/bflb)
 list(APPEND MATTER_CFLAGS_C  -I${EXAMPLE_DIR}/bflb/wifi)
 list(APPEND MATTER_CFLAGS_CC -I${EXAMPLE_DIR}/bflb/wifi)
 
-list(APPEND MATTER_CFLAGS_C  -include ${CMAKE_CURRENT_BINARY_DIR}/generated/autoconf.h)
-list(APPEND MATTER_CFLAGS_CC -include ${CMAKE_CURRENT_BINARY_DIR}/generated/autoconf.h)
+list(APPEND MATTER_CFLAGS_C  -include ${_matter_sdk_config_header})
+list(APPEND MATTER_CFLAGS_CC -include ${_matter_sdk_config_header})
 
 list(APPEND MATTER_CFLAGS_C  -UMBEDTLS_NET_C)
 list(APPEND MATTER_CFLAGS_CC -UMBEDTLS_NET_C)
@@ -197,7 +206,12 @@ matter_add_gn_arg_bool("chip_enable_factory_data" CONFIG_MFD STREQUAL "y")
 matter_add_gn_arg_bool("chip_enable_additional_data_advertising" CONFIG_CHIP_ROTATING_DEVICE_ID STREQUAL "y")
 matter_add_gn_arg_bool("chip_enable_rotating_device_id"          CONFIG_CHIP_ROTATING_DEVICE_ID STREQUAL "y")
 
-matter_add_gn_arg_string("cross_compile" "${CROSS_COMPILE}")
+# Use the compiler prefix selected by the SDK toolchain so GN and the final
+# SDK link always use the same compiler family.
+get_filename_component(_bflb_cc_name "${CMAKE_C_COMPILER}" NAME)
+string(REGEX REPLACE "gcc(-.*)?$" "" _bflb_gn_cross_compile "${_bflb_cc_name}")
+bflb_print_toolchain("${_bflb_gn_cross_compile}")
+matter_add_gn_arg_string("cross_compile" "${_bflb_gn_cross_compile}")
 matter_add_gn_arg_list("chip_project_config_include_dirs" "\"${EXAMPLE_DIR}/bflb\"")
 
 bflb_remove_lto()
@@ -212,8 +226,7 @@ matter_common_gn_args(
 # GN Build
 # =============================================================================
 
-matter_generate_args_tmp_file()
-matter_build(chip)
+add_subdirectory(${EXAMPLES_PLAT_DIR}/bflb/matter-library ${MATTER_GN_BUILD_DIR})
 
 # =============================================================================
 # SDK Include Directories
@@ -312,7 +325,7 @@ target_include_directories(app PRIVATE
   ${EXAMPLES_PLAT_DIR}/common/route_hook
   ${CHIP_ROOT}/examples/providers
   ${CHIP_ROOT}/zzz_generated/app-common
-  ${CMAKE_CURRENT_BINARY_DIR}/gen/include
+  ${MATTER_GN_BUILD_DIR}/gen/include
   ${EXAMPLE_DIR}/common
 )
 

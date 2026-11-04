@@ -48,6 +48,11 @@ endif()
 
 find_package(bouffalo_sdk REQUIRED HINTS $ENV{BL_SDK_BASE} ${BL_SDK_BASE})
 include(${EXAMPLES_PLAT_DIR}/bflb/bflb_common.cmake)
+bflb_defer_constructors_to_platform_init()
+
+# GN owns only its child directory; SDK configuration remains build-local.
+set(MATTER_GN_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/matter-gn")
+set(_matter_sdk_config_header "${CMAKE_BINARY_DIR}/generated/autoconfig.h")
 
 # Use the Matter partition table when factory data is enabled so the SDK
 # post-processing step emits a partition.bin with the MFD partition.
@@ -81,7 +86,7 @@ include(${CHIP_ROOT}/src/app/chip_data_model.cmake)
 
 # Extract SDK properties
 get_target_property(_sdk_opts sdk_intf_lib INTERFACE_COMPILE_OPTIONS)
-get_target_property(_sdk_defs sdk_intf_lib INTERFACE_COMPILE_DEFINITIONS)
+bflb_get_sdk_definitions(_sdk_defs)
 get_target_property(_sdk_incs sdk_intf_lib INTERFACE_INCLUDE_DIRECTORIES)
 
 # Convert SDK options to MATTER_CFLAGS (filter generator expressions)
@@ -126,6 +131,12 @@ list(FILTER MATTER_CFLAGS    EXCLUDE REGEX "^-Wno-unknown-warning-option$")
 list(FILTER MATTER_CFLAGS_C  EXCLUDE REGEX "^-Wno-unknown-warning-option$")
 list(FILTER MATTER_CFLAGS_CC EXCLUDE REGEX "^-Wno-unknown-warning-option$")
 
+# GCC 14 diagnoses lwIP NULL checks after separate preprocessing with
+# -save-temps. Keep the SDK's diagnostic option out of Matter compilation.
+foreach(_flags MATTER_CFLAGS MATTER_CFLAGS_C MATTER_CFLAGS_CC)
+  list(FILTER ${_flags} EXCLUDE REGEX "^-save-temps(=.*)?$")
+endforeach()
+
 # =============================================================================
 # Matter Flags
 # =============================================================================
@@ -149,8 +160,8 @@ list(APPEND MATTER_CFLAGS_CC
 list(APPEND MATTER_CFLAGS_C  -I${EXAMPLE_DIR}/bflb)
 list(APPEND MATTER_CFLAGS_CC -I${EXAMPLE_DIR}/bflb)
 
-list(APPEND MATTER_CFLAGS_C  -include ${CMAKE_BINARY_DIR}/generated/autoconfig.h)
-list(APPEND MATTER_CFLAGS_CC -include ${CMAKE_BINARY_DIR}/generated/autoconfig.h)
+list(APPEND MATTER_CFLAGS_C  -include ${_matter_sdk_config_header})
+list(APPEND MATTER_CFLAGS_CC -include ${_matter_sdk_config_header})
 
 list(APPEND MATTER_CFLAGS_C  -UMBEDTLS_NET_C)
 list(APPEND MATTER_CFLAGS_CC -UMBEDTLS_NET_C)
@@ -233,23 +244,16 @@ matter_add_gn_arg_bool("chip_enable_rotating_device_id"          CONFIG_CHIP_ROT
 # file.
 get_filename_component(_bflb_cc_name "${CMAKE_C_COMPILER}" NAME)
 string(REGEX REPLACE "gcc(-.*)?$" "" _bflb_gn_cross_compile "${_bflb_cc_name}")
+bflb_print_toolchain("${_bflb_gn_cross_compile}")
 matter_add_gn_arg_string("cross_compile" "${_bflb_gn_cross_compile}")
 matter_add_gn_arg_list("chip_project_config_include_dirs" "\"${EXAMPLE_DIR}/bflb\"")
 
-# Mirror the SDK toolchain probe (cmake/toolchain.cmake): on BL616 the SDK
-# enables picolibc whenever the selected compiler ships picolibc.specs.
-# The GN step compiles but does not link, so it needs the same libc
-# configuration as compile flags: picolibc.specs for pthread.h (pulled in
-# by libstdc++ and Matter headers), and _DEFAULT_SOURCE for the POSIX/BSD
-# declarations (strlcpy, ...) that newlib exposes by default.
-execute_process(
-  COMMAND ${CMAKE_C_COMPILER} -print-file-name=picolibc.specs
-  OUTPUT_VARIABLE _bflb_picolibc_specs
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-  ERROR_QUIET
-)
-if(IS_ABSOLUTE "${_bflb_picolibc_specs}" AND EXISTS "${_bflb_picolibc_specs}")
-  matter_add_flags(--specs=${_bflb_picolibc_specs})
+# Use the SDK's libc selection for GN too. Zephyr GCC defaults to Picolibc
+# and must not load picolibc.specs a second time.
+if(BFLB_USE_PICOLIBC)
+  if(BFLB_PICOLIBC_SPECS)
+    matter_add_flags(${BFLB_PICOLIBC_SPECS})
+  endif()
   matter_add_flags(-D_DEFAULT_SOURCE)
 endif()
 
@@ -265,8 +269,7 @@ matter_common_gn_args(
 # GN Build
 # =============================================================================
 
-matter_generate_args_tmp_file()
-matter_build(chip)
+add_subdirectory(${EXAMPLES_PLAT_DIR}/bflb/matter-library ${MATTER_GN_BUILD_DIR})
 
 # =============================================================================
 # SDK Include Directories
@@ -280,6 +283,7 @@ sdk_add_include_directories(
   ${EXAMPLES_PLAT_DIR}/bflb
   ${EXAMPLES_PLAT_DIR}/common/bouffalo_sdk
   ${EXAMPLES_PLAT_DIR}/common/plat
+  ${BL_SDK_BASE}/components/wireless/matter/mfd/include
 )
 
 if(CONFIG_ETHERNET STREQUAL "y")
@@ -349,7 +353,7 @@ target_include_directories(app PRIVATE
   ${EXAMPLES_PLAT_DIR}/common/route_hook
   ${CHIP_ROOT}/examples/providers
   ${CHIP_ROOT}/zzz_generated/app-common
-  ${CMAKE_CURRENT_BINARY_DIR}/gen/include
+  ${MATTER_GN_BUILD_DIR}/gen/include
 )
 
 if(CONFIG_SHELL STREQUAL "y")
