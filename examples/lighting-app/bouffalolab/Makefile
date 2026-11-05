@@ -88,8 +88,10 @@ ifeq ($(CONFIG_THREAD),y)
   cmake_definition += -DOPENTHREAD_PROJECT_CORE_CONFIG_FILE=\"openthread-core-proj-config.h\"
   cmake_definition += -DOPENTHREAD_CORE_CONFIG_PLATFORM_CHECK_FILE=\"openthread-core-platform-config-check.h\"
   ifeq ($(CONFIG_SHELL),y)
-    cmake_definition += -DCONFIG_OT_CLI=shell
-    cmake_definition += -DCONFIG_SHELL_CMD_SIZE=256
+    # SDK configuration is generated from Make CONFIG_* variables. CMake-only
+    # values are overwritten when generated/autoconfig.cmake is loaded.
+    CONFIG_OT_CLI = shell
+    CONFIG_SHELL_CMD_SIZE = 256
   endif
 endif
 
