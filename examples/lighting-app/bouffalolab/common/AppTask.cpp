@@ -159,9 +159,18 @@ void AppTask::AppTaskMain(void * pvParameter)
     ButtonInit();
 #else
     uint32_t resetCnt = 0;
-    Internal::BflbConfig::ReadConfigValue(APP_REBOOT_RESET_COUNT_KEY, resetCnt);
+    CHIP_ERROR configErr = Internal::BflbConfig::ReadConfigValue(APP_REBOOT_RESET_COUNT_KEY, resetCnt);
+    if (configErr != CHIP_NO_ERROR)
+    {
+        ChipLogProgress(NotSpecified, "No persisted reset count found; starting at zero: %s", ErrorStr(configErr));
+        resetCnt = 0;
+    }
     resetCnt++;
-    Internal::BflbConfig::WriteConfigValue(APP_REBOOT_RESET_COUNT_KEY, resetCnt);
+    configErr = Internal::BflbConfig::WriteConfigValue(APP_REBOOT_RESET_COUNT_KEY, resetCnt);
+    if (configErr != CHIP_NO_ERROR)
+    {
+        ChipLogError(NotSpecified, "Failed to persist reset count: %s", ErrorStr(configErr));
+    }
     GetAppTask().mButtonPressedTime = System::SystemClock().GetMonotonicMilliseconds64().count();
     ChipLogProgress(NotSpecified, "AppTaskMain %llu, resetCnt %u", (unsigned long long) GetAppTask().mButtonPressedTime,
                     (unsigned int) resetCnt);
@@ -235,7 +244,11 @@ void AppTask::AppTaskMain(void * pvParameter)
                 }
                 ChipLogProgress(NotSpecified, "APP_REBOOT_RESET_COUNT_KEY resetCnt %ld", resetCnt);
                 resetCnt = 0;
-                Internal::BflbConfig::WriteConfigValue(APP_REBOOT_RESET_COUNT_KEY, resetCnt);
+                CHIP_ERROR configErr = Internal::BflbConfig::WriteConfigValue(APP_REBOOT_RESET_COUNT_KEY, resetCnt);
+                if (configErr != CHIP_NO_ERROR)
+                {
+                    ChipLogError(NotSpecified, "Failed to clear persisted reset count: %s", ErrorStr(configErr));
+                }
             }
 #endif
             if (APP_EVENT_IDENTIFY_MASK & appEvent)

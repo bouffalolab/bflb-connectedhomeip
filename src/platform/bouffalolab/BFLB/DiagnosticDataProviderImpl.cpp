@@ -35,6 +35,25 @@ CHIP_ERROR DiagnosticDataProviderImpl::GetBootReason(BootReasonType & bootReason
 {
     BL_RST_REASON_E bootCause = bl_sys_rstinfo_get();
 
+#if defined(BL618DG)
+    // bl618dg_sys.h: POWER_ON / WATCHDOG / PDS_WAKEUP / HBN_WAKEUP / SOFTWARE
+    if (bootCause == BL_RST_POWER_ON)
+    {
+        bootReason = BootReasonType::kPowerOnReboot;
+    }
+    else if (bootCause == BL_RST_WATCHDOG)
+    {
+        bootReason = BootReasonType::kHardwareWatchdogReset;
+    }
+    else if (bootCause == BL_RST_SOFTWARE)
+    {
+        bootReason = BootReasonType::kSoftwareReset;
+    }
+    else
+    {
+        bootReason = BootReasonType::kUnspecified;
+    }
+#else
     if (bootCause == BL_RST_POWER_OFF)
     {
         bootReason = BootReasonType::kPowerOnReboot;
@@ -67,6 +86,7 @@ CHIP_ERROR DiagnosticDataProviderImpl::GetBootReason(BootReasonType & bootReason
     {
         bootReason = BootReasonType::kUnspecified;
     }
+#endif // defined(BL618DG)
 
     return CHIP_NO_ERROR;
 }

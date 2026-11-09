@@ -46,6 +46,7 @@ CONFIG_OT_MTD ?= n
 # =============================================================================
 
 CONFIG_SHELL                  ?= n
+BFLB_LWIP_DHCP_DEBUG          ?= n
 CONFIG_MFD                    ?= y
 CONFIG_CHIP_ROTATING_DEVICE_ID ?= n
 CONFIG_CHIP_HEAP_MONITOR       ?= n
@@ -76,6 +77,7 @@ cmake_definition += -DCONFIG_ETHERNET=${CONFIG_ETHERNET}
 
 # Optional features
 cmake_definition += -DCONFIG_SHELL=${CONFIG_SHELL}
+cmake_definition += -DBFLB_LWIP_DHCP_DEBUG=${BFLB_LWIP_DHCP_DEBUG}
 cmake_definition += -DCONFIG_MFD=${CONFIG_MFD}
 cmake_definition += -DCONFIG_CHIP_ROTATING_DEVICE_ID=${CONFIG_CHIP_ROTATING_DEVICE_ID}
 cmake_definition += -DCONFIG_CHIP_HEAP_MONITOR=${CONFIG_CHIP_HEAP_MONITOR}

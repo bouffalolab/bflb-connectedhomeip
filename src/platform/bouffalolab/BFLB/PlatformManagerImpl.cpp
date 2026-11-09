@@ -64,6 +64,15 @@ static int app_entropy_source(void * data, unsigned char * output, size_t len, s
 
 CHIP_ERROR PlatformManagerImpl::_InitChipStack(void)
 {
+    // The embedded chip-tool command layer may recreate its controller factory
+    // for each shell invocation. Platform services (rfparam, lwIP, Wi-Fi and
+    // the generic FreeRTOS platform manager) are process-lifetime resources.
+    static bool sPlatformInitialized = false;
+    if (sPlatformInitialized)
+    {
+        return CHIP_NO_ERROR;
+    }
+
     CHIP_ERROR err  = CHIP_NO_ERROR;
     int iret_rfInit = -1;
 
@@ -100,6 +109,7 @@ CHIP_ERROR PlatformManagerImpl::_InitChipStack(void)
     // to finish the initialization process.
     err = Internal::GenericPlatformManagerImpl_FreeRTOS<PlatformManagerImpl>::_InitChipStack();
     SuccessOrExit(err);
+    sPlatformInitialized = true;
 
 exit:
     return err;

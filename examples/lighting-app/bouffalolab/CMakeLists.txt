@@ -50,6 +50,11 @@ find_package(bouffalo_sdk REQUIRED HINTS $ENV{BL_SDK_BASE} ${BL_SDK_BASE})
 include(${EXAMPLES_PLAT_DIR}/bflb/bflb_common.cmake)
 bflb_defer_constructors_to_platform_init()
 
+if(BFLB_LWIP_DHCP_DEBUG STREQUAL "y")
+  # lwipopts_user.h gates DHCP_DEBUG on this SDK-wide compile definition.
+  sdk_add_compile_definitions(-DBL616_DHCP_DEBUG=1)
+endif()
+
 # GN owns only its child directory; SDK configuration remains build-local.
 set(MATTER_GN_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/matter-gn")
 set(_matter_sdk_config_header "${CMAKE_BINARY_DIR}/generated/autoconfig.h")
@@ -306,6 +311,9 @@ set(_COMMON_DEFS
   OTA_PERIODIC_TIMEOUT=14400
   BOUFFALOLAB_APP_NAME="chip-lighting-example"
 )
+if(CHIP STREQUAL "bl618dg" AND CONFIG_WIFI STREQUAL "y")
+  list(APPEND _COMMON_DEFS BOUFFALOLAB_ENABLE_BTBLE_COMBO_INIT=1)
+endif()
 if(CONFIG_WIFI STREQUAL "y")
   list(APPEND _COMMON_DEFS CHIP_DEVICE_CONFIG_ENABLE_WIFI=1)
   list(APPEND _COMMON_DEFS CHIP_DEVICE_CONFIG_ENABLE_CHIPOBLE=1)
