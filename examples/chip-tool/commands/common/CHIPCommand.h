@@ -18,7 +18,9 @@
 
 #pragma once
 
-#ifdef CONFIG_USE_LOCAL_STORAGE
+#if defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
+#include <KvsPersistentStorage.h>
+#elif defined(CONFIG_USE_LOCAL_STORAGE)
 #include <controller/ExamplePersistentStorage.h>
 #endif // CONFIG_USE_LOCAL_STORAGE
 
@@ -26,7 +28,9 @@
 
 #include "BDXDiagnosticLogsServerDelegate.h"
 
+#if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
 #include <TracingCommandLineArgument.h>
+#endif
 #include <app/icd/client/CheckInHandler.h>
 #include <app/icd/client/DefaultCheckInDelegate.h>
 #include <app/icd/client/DefaultICDClientStorage.h>
@@ -95,7 +99,9 @@ public:
         AddArgument("trace_log", 0, 1, &mTraceLog);
         AddArgument("trace_decode", 0, 1, &mTraceDecode);
 #endif // CHIP_CONFIG_TRANSPORT_TRACE_ENABLED
+#if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
         AddArgument("trace-to", &mTraceTo, "Trace destinations, comma-separated (" SUPPORTED_COMMAND_LINE_TRACING_TARGETS ")");
+#endif
         AddArgument("ble-controller", 0, UINT16_MAX, &mBleAdapterId,
                     "BLE controller selector, see example or platform docs for details");
         AddArgument("storage-directory", &mStorageDirectory,
@@ -157,7 +163,10 @@ protected:
     // Execute any deferred cleanups.  Used when exiting interactive mode.
     static void ExecuteDeferredCleanups(intptr_t ignored);
 
-#ifdef CONFIG_USE_LOCAL_STORAGE
+#if defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
+    KvsPersistentStorage mDefaultStorage;
+    KvsPersistentStorage mCommissionerStorage;
+#elif defined(CONFIG_USE_LOCAL_STORAGE)
     PersistentStorage mDefaultStorage;
     // TODO: It's pretty weird that we re-init mCommissionerStorage for every
     // identity without shutting it down or something in between...
@@ -264,8 +273,10 @@ private:
     bool mWaitingForResponse{ true };
 #endif // CONFIG_USE_SEPARATE_EVENTLOOP
 
+#if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
     void StartTracing();
     void StopTracing();
+#endif
 
 #if CHIP_CONFIG_TRANSPORT_TRACE_ENABLED
     chip::Optional<char *> mTraceFile;
@@ -273,6 +284,8 @@ private:
     chip::Optional<bool> mTraceDecode;
 #endif // CHIP_CONFIG_TRANSPORT_TRACE_ENABLED
 
+#if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
     chip::CommandLineApp::TracingSetup mTracingSetup;
+#endif
     chip::Optional<std::vector<std::string>> mTraceTo;
 };

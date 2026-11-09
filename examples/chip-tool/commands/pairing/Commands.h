@@ -316,9 +316,11 @@ void registerCommandsPairing(Commands & commands, CredentialIssuerCommands * cre
         //        make_unique<CommissionedListCommand>(),
         make_unique<StartUdcServerCommand>(credsIssuerConfig),
         make_unique<OpenCommissioningWindowCommand>(credsIssuerConfig),
+#if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
         make_unique<GetCommissionerNodeIdCommand>(credsIssuerConfig),
         make_unique<GetCommissionerRootCertificateCommand>(credsIssuerConfig),
         make_unique<IssueNOCChainCommand>(credsIssuerConfig),
+#endif
     };
 
     commands.RegisterCommandSet(clusterName, clusterCommands, "Commands for commissioning devices.");

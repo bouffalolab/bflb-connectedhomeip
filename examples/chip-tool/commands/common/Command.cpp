@@ -167,6 +167,14 @@ exit:
 
 static bool ParseAddressWithInterface(const char * addressString, Command::AddressWithInterface * address)
 {
+#if defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
+    if (!chip::Inet::IPAddress::FromString(addressString, address->address, address->interfaceId))
+    {
+        ChipLogError(chipTool, "Invalid IP address: %s", addressString);
+        return false;
+    }
+    return true;
+#else
     struct addrinfo hints;
     struct addrinfo * result;
     int ret;
@@ -201,6 +209,7 @@ static bool ParseAddressWithInterface(const char * addressString, Command::Addre
     }
 
     return true;
+#endif // BOUFFALOLAB_CHIP_TOOL_CONTROLLER
 }
 
 // The callback should return whether the argument is valid, for the non-null

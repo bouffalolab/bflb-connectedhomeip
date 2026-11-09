@@ -1,0 +1,74 @@
+CONFIG_BFLB_LOG                              = n
+CONFIG_COREDUMP                             ?= n
+CONFIG_VSNPRINTF_NANO                       = n
+CONFIG_VSNPRINTF_FLOAT                      = y
+CONFIG_VSNPRINTF_FLOAT_EX                   = y
+CONFIG_VSNPRINTF_LONG_LONG                  = y
+
+CONFIG_BFLB_MTD                             = y
+CONFIG_PARTITION                            = y
+CONFIG_LITTLEFS                             = y
+CONFIG_FOTA                                 = n
+
+CONFIG_FREERTOS                             = y
+CONFIG_POSIX                                = n
+CONFIG_TLSF                                 = y
+
+CONFIG_CONSOLE_UART_BAUDRATE                = 2000000
+CONFIG_NO_SHORT_ENUMS                       = y
+CONFIG_STDATOMIC                            = y
+CONFIG_MM_ENABLE_MIN_FREE_TRACKING          = y
+
+# A controller holds no DAC/PAI factory data partition.
+CONFIG_MATTER                               = n
+
+CONFIG_MBEDTLS                              = y
+CONFIG_MBEDTLS_V2                           = n
+CONFIG_MBEDTLS_AES_USE_HW                   = y
+CONFIG_MBEDTLS_BIGNUM_USE_HW                = y
+CONFIG_MBEDTLS_ECC_USE_HW                   = y
+CONFIG_MBEDTLS_SHA1_USE_HW                  = y
+CONFIG_MBEDTLS_SHA256_USE_HW                = y
+CONFIG_MBEDTLS_SHA512_USE_HW                = y
+
+# Matter-required mbedTLS v3 features (consumed by SDK config-tls-generic.h).
+CONFIG_MBEDTLS_CIPHER_CCM_ENABLED           = y
+CONFIG_MBEDTLS_HKDF_C                       = y
+CONFIG_MBEDTLS_X509_CSR_WRITE_C             = y
+CONFIG_MBEDTLS_HMAC_DRBG_ENABLED            = y
+CONFIG_MBEDTLS_CMAC                         = y
+CONFIG_MBEDTLS_ECDSA_DETERMINISTIC          = y
+
+# BLE central role (stage B): scanning/connecting for `pairing ble`.
+# Enabled from the start so the controller image layout does not change.
+CONFIG_RF                                   = y
+CONFIG_BLUETOOTH                            = y
+ifeq ($(CHIP),bl618dg)
+  CONFIG_BTBLECONTROLLER_LIB                = ble1m0s1bredr0
+else ifeq ($(CHIP),bl616)
+  CONFIG_BTBLECONTROLLER_LIB                = ble1m0s1bredr0
+else
+  CONFIG_BTBLECONTROLLER_LIB                = m2s1
+endif
+CONFIG_BLE_USING_DYNAMIC_RAM                = 1
+CONFIG_BLE_USE_MAC2                         = n
+CONFIG_BT_OAD_SERVER                        = n
+CONFIG_BT_STACK_CLI                         = n
+
+# WiFi 6 STA via fhost + wifi_mgmr
+ifeq ($(CONFIG_WIFI),y)
+  CONFIG_WIFI6                              = y
+  CONFIG_MACSW_SELECT                       = default
+  CONFIG_FHOST                              = y
+  CONFIG_IPV6                               = y
+  # The SDK's Wi-Fi6 net_al_ext adapter links its DHCP server API unconditionally.
+  CONFIG_DHCPD                              = y
+endif
+
+ifneq ($(filter y,$(CONFIG_WIFI) $(CONFIG_ETHERNET)),)
+  CONFIG_LWIP                               = y
+  CONFIG_PING                               = n
+endif
+
+# CLI shell hosting the `matter` command group
+CONFIG_SHELL                                = y

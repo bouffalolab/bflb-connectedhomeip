@@ -18,11 +18,15 @@
 
 #include "CHIPCommand.h"
 
+#if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
 #include <commands/icd/ICDCommand.h>
+#endif
 #include <controller/CHIPDeviceControllerFactory.h>
+#if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
 #include <credentials/attestation_verifier/FileAttestationTrustStore.h>
 #include <credentials/attestation_verifier/TestDACRevocationDelegateImpl.h>
 #include <data-model-providers/codegen/Instance.h>
+#endif
 #include <lib/core/CHIPConfig.h>
 #include <lib/core/CHIPVendorIdentifiers.hpp>
 #include <lib/support/CodeUtils.h>
@@ -61,6 +65,7 @@ chip::app::CheckInHandler CHIPCommand::sCheckInHandler;
 
 namespace {
 
+#if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
 CHIP_ERROR GetAttestationTrustStore(const char * paaTrustStorePath, const chip::Credentials::AttestationTrustStore ** trustStore)
 {
     if (paaTrustStorePath == nullptr)
@@ -104,6 +109,7 @@ CHIP_ERROR GetAttestationRevocationDelegate(const char * revocationSetPath,
     *revocationDelegate = &testDacRevocationDelegate;
     return CHIP_NO_ERROR;
 }
+#endif
 
 } // namespace
 
@@ -114,7 +120,9 @@ CHIP_ERROR CHIPCommand::MaybeSetUpStack()
         return CHIP_NO_ERROR;
     }
 
+#if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
     StartTracing();
+#endif
 
 #if (CHIP_DEVICE_LAYER_TARGET_LINUX || CHIP_DEVICE_LAYER_TARGET_TIZEN) && CHIP_DEVICE_CONFIG_ENABLE_CHIPOBLE
     // By default, Linux device is configured as a BLE peripheral while the controller needs a BLE central.
@@ -138,7 +146,12 @@ CHIP_ERROR CHIPCommand::MaybeSetUpStack()
     factoryInitParams.opCertStore              = &mOpCertStore;
     factoryInitParams.enableServerInteractions = NeedsOperationalAdvertising();
     factoryInitParams.sessionKeystore          = &sSessionKeystore;
-    factoryInitParams.dataModelProvider        = chip::app::CodegenDataModelProviderInstance(&mDefaultStorage);
+    // This target is an IP commissioner only. It does not host a generated
+    // server data model, so avoid pulling the codegen provider into the
+    // embedded image.
+#if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
+    factoryInitParams.dataModelProvider = chip::app::CodegenDataModelProviderInstance(&mDefaultStorage);
+#endif
 
     // Init group data provider that will be used for all group keys and IPKs for the
     // chip-tool-configured fabrics. This is OK to do once since the fabric tables
@@ -160,19 +173,23 @@ CHIP_ERROR CHIPCommand::MaybeSetUpStack()
     factoryInitParams.listenPort = port;
     if (mInterfaceId.HasValue())
     {
+#if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
         factoryInitParams.interfaceId =
             chip::Inet::InterfaceId(static_cast<chip::Inet::InterfaceId::PlatformType>(mInterfaceId.Value()));
+#endif
     }
     ReturnLogErrorOnFailure(DeviceControllerFactory::GetInstance().Init(factoryInitParams));
 
     auto systemState = chip::Controller::DeviceControllerFactory::GetInstance().GetSystemState();
     VerifyOrReturnError(nullptr != systemState, CHIP_ERROR_INCORRECT_STATE);
 
+#if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
     auto server = systemState->BDXTransferServer();
     VerifyOrReturnError(nullptr != server, CHIP_ERROR_INCORRECT_STATE);
-
     server->SetDelegate(&BDXDiagnosticLogsServerDelegate::GetInstance());
+#endif
 
+#if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
     ReturnErrorOnFailure(GetAttestationTrustStore(mPaaTrustStorePath.ValueOr(nullptr), &sTrustStore));
 
     ReturnLogErrorOnFailure(GetAttestationRevocationDelegate(mDacRevocationSetPath.ValueOr(nullptr), &sRevocationDelegate));
@@ -182,11 +199,15 @@ CHIP_ERROR CHIPCommand::MaybeSetUpStack()
     ReturnLogErrorOnFailure(ChipToolCheckInDelegate()->Init(&sICDClientStorage, engine));
     ReturnLogErrorOnFailure(sCheckInHandler.Init(DeviceControllerFactory::GetInstance().GetSystemState()->ExchangeMgr(),
                                                  &sICDClientStorage, ChipToolCheckInDelegate(), engine));
+#else
+    sTrustStore = chip::Credentials::GetTestAttestationTrustStore();
+#endif
 
     CommissionerIdentity nullIdentity{ kIdentityNull, chip::kUndefinedNodeId };
     ReturnLogErrorOnFailure(InitializeCommissioner(nullIdentity, kIdentityNullFabricId));
 
     // After initializing first commissioner, add the additional CD certs once
+#if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
     {
         const char * cdTrustStorePath = mCDTrustStorePath.ValueOr(nullptr);
         if (cdTrustStorePath == nullptr)
@@ -208,8 +229,9 @@ CHIP_ERROR CHIPCommand::MaybeSetUpStack()
         ReturnErrorOnFailure(mCredIssuerCmds->AddAdditionalCDVerifyingCerts(additionalCdCerts));
     }
     bool allowTestCdSigningKey = !mOnlyAllowTrustedCdKeys.ValueOr(false);
-    mCredIssuerCmds->SetCredentialIssuerOption(CredentialIssuerCommands::CredentialIssuerOptions::kAllowTestCdSigningKey,
-                                               allowTestCdSigningKey);
+        mCredIssuerCmds->SetCredentialIssuerOption(CredentialIssuerCommands::CredentialIssuerOptions::kAllowTestCdSigningKey,
+                                                   allowTestCdSigningKey);
+#endif
 
     return CHIP_NO_ERROR;
 }
@@ -231,7 +253,9 @@ void CHIPCommand::MaybeTearDownStack()
         ShutdownCommissioner(commissioner.first);
     }
 
+#if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
     StopTracing();
+#endif
 }
 
 CHIP_ERROR CHIPCommand::EnsureCommissionerForIdentity(std::string identity)
@@ -295,6 +319,7 @@ CHIP_ERROR CHIPCommand::Run()
     return err;
 }
 
+#if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
 void CHIPCommand::StartTracing()
 {
     if (mTraceTo.HasValue())
@@ -337,6 +362,7 @@ void CHIPCommand::StopTracing()
     chip::trace::DeInitTrace();
 #endif // CHIP_CONFIG_TRANSPORT_TRACE_ENABLED
 }
+#endif
 
 void CHIPCommand::SetIdentity(const char * identity)
 {
@@ -627,11 +653,13 @@ static void OnResponseTimeout(chip::System::Layer *, void * appState)
 CHIP_ERROR CHIPCommand::StartWaiting(chip::System::Clock::Timeout duration)
 {
 #if CONFIG_USE_SEPARATE_EVENTLOOP
+#if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
     // ServiceEvents() calls StartEventLoopTask(), which is paired with the StopEventLoopTask() below.
     if (!IsInteractive())
     {
         ReturnLogErrorOnFailure(DeviceControllerFactory::GetInstance().ServiceEvents());
     }
+#endif
 
     if (duration.count() == 0)
     {
@@ -650,10 +678,12 @@ CHIP_ERROR CHIPCommand::StartWaiting(chip::System::Clock::Timeout duration)
             mCommandExitStatus = CHIP_ERROR_TIMEOUT;
         }
     }
+#if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
     if (!IsInteractive())
     {
         LogErrorOnFailure(chip::DeviceLayer::PlatformMgr().StopEventLoopTask());
     }
+#endif
 #else
     chip::DeviceLayer::PlatformMgr().ScheduleWork(RunQueuedCommand, reinterpret_cast<intptr_t>(this));
     ReturnLogErrorOnFailure(chip::DeviceLayer::SystemLayer().StartTimer(duration, OnResponseTimeout, this));

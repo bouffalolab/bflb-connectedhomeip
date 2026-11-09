@@ -18,7 +18,7 @@
 
 #pragma once
 
-#ifdef CONFIG_USE_LOCAL_STORAGE
+#if defined(CONFIG_USE_LOCAL_STORAGE) && !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
 #include <controller/ExamplePersistentStorage.h>
 #endif // CONFIG_USE_LOCAL_STORAGE
 
@@ -95,7 +95,7 @@ private:
     void Register(const char * commandSetName, commands_list commandsList, const char * helpText, bool isCluster);
 
     CommandSetMap mCommandSets;
-#ifdef CONFIG_USE_LOCAL_STORAGE
+#if defined(CONFIG_USE_LOCAL_STORAGE) && !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
     PersistentStorage mStorage;
 #endif // CONFIG_USE_LOCAL_STORAGE
 };

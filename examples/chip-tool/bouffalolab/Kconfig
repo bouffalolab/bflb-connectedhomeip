@@ -1,0 +1,29 @@
+# Application-level switches for the chip-tool controller example.
+#
+# The bouffalo_sdk strict Kconfig flow rejects assignments to undeclared
+# symbols, so every CONFIG_* exported by the example Makefile must be declared
+# here or in the SDK Kconfig.
+
+mainmenu "Matter controller (chip-tool) configuration"
+
+config WIFI
+	bool "Wi-Fi STA transport (controller)"
+	default y
+
+config ETHERNET
+	bool "Ethernet transport"
+	default n
+
+config MFD
+	bool "Manufacturing data partition (not needed for a controller)"
+	default n
+
+config CHIP_HEAP_MONITOR
+	bool "Matter heap monitor"
+	default n
+
+config CHIP_ROTATING_DEVICE_ID
+	bool "Matter rotating device ID"
+	default n
+
+source "$BL_SDK_BASE/Kconfig"

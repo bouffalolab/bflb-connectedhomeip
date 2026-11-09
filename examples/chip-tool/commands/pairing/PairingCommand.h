@@ -35,7 +35,9 @@
 #include <transport/raw/ProxyTransport.h>
 
 #include <optional>
+#if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
 #include <thread>
+#endif
 #include <vector>
 
 enum class PairingMode
@@ -80,8 +82,7 @@ public:
                    chip::Dnssd::DiscoveryFilterType filterType = chip::Dnssd::DiscoveryFilterType::kNone) :
         CHIPCommand(commandName, credIssuerCmds),
         mPairingMode(mode), mNetworkType(networkType), mFilterType(filterType),
-        mRemoteAddr{ IPAddress::Any, chip::Inet::InterfaceId::Null() }, mComplex_TimeZones(&mTimeZoneList),
-        mComplex_DSTOffsets(&mDSTOffsetList), mPDCRegistrarIdleCallback(OnPDCRegistrarIdle, this),
+        mRemoteAddr{ IPAddress::Any, chip::Inet::InterfaceId::Null() }, mPDCRegistrarIdleCallback(OnPDCRegistrarIdle, this),
         mCurrentFabricRemoveCallback(OnCurrentFabricRemove, this), mOnProxyConnectedCallback(OnProxyDeviceConnected, this),
         mOnProxyConnectionFailureCallback(OnProxyDeviceConnectionFailed, this)
     {
@@ -258,6 +259,7 @@ public:
             AddArgument("country-code", &mCountryCode,
                         "Country code to use to set the Basic Information cluster's Location attribute");
 
+#if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
             // mTimeZoneList is an optional argument managed by TypedComplexArgument mComplex_TimeZones.
             // Since optional Complex arguments are not currently supported via the <chip::Optional> class,
             // we explicitly set the kOptional flag.
@@ -270,6 +272,7 @@ public:
             AddArgument("dst-offset", &mComplex_DSTOffsets,
                         "DSTOffset list to use when setting Time Synchronization cluster's DSTOffset attribute",
                         Argument::kOptional);
+#endif
 
             AddArgument("tc-acknowledgements", 0, UINT16_MAX, &mTCAcknowledgements,
                         "Bit-field value indicating which Terms and Conditions have been accepted by the user. This value is sent "
@@ -370,12 +373,14 @@ private:
     chip::Optional<char *> mDCLHostName;
     chip::Optional<uint16_t> mDCLPort;
     chip::Optional<bool> mUseDCL;
+#if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
     chip::app::DataModel::List<chip::app::Clusters::TimeSynchronization::Structs::TimeZoneStruct::Type> mTimeZoneList;
     TypedComplexArgument<chip::app::DataModel::List<chip::app::Clusters::TimeSynchronization::Structs::TimeZoneStruct::Type>>
         mComplex_TimeZones;
     chip::app::DataModel::List<chip::app::Clusters::TimeSynchronization::Structs::DSTOffsetStruct::Type> mDSTOffsetList;
     TypedComplexArgument<chip::app::DataModel::List<chip::app::Clusters::TimeSynchronization::Structs::DSTOffsetStruct::Type>>
         mComplex_DSTOffsets;
+#endif
 #if CHIP_DEVICE_CONFIG_ENABLE_WIFIPAF
     chip::Optional<char *> mApFreqStr;
 #endif
@@ -420,7 +425,9 @@ private:
     chip::Optional<uint16_t> mThreadBaPort;
 #endif
 
+#if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
     std::optional<std::thread> mPrompterThread;
+#endif
 
     std::string mPromptedSSID;
     std::string mPromptedPassword;

@@ -19,7 +19,6 @@
 #pragma once
 
 #include "../common/CHIPCommand.h"
-#include <controller/ExamplePersistentStorage.h>
 
 class DiscoverCommand : public CHIPCommand
 {

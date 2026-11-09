@@ -168,12 +168,12 @@ int Commands::Run(int argc, char ** argv)
     err = chip::Platform::MemoryInit();
     VerifyOrExit(err == CHIP_NO_ERROR, ChipLogError(Controller, "Init Memory failure: %s", chip::ErrorStr(err)));
 
-#ifdef CONFIG_USE_LOCAL_STORAGE
+#if defined(CONFIG_USE_LOCAL_STORAGE) && !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
     err = mStorage.Init();
     VerifyOrExit(err == CHIP_NO_ERROR, ChipLogError(Controller, "Init Storage failure: %s", chip::ErrorStr(err)));
 
     chip::Logging::SetLogFilter(mStorage.GetLoggingLevel());
-#endif // CONFIG_USE_LOCAL_STORAGE
+#endif // CONFIG_USE_LOCAL_STORAGE && !BOUFFALOLAB_CHIP_TOOL_CONTROLLER
 
     err = RunCommand(argc, argv);
     VerifyOrExit(err == CHIP_NO_ERROR, ChipLogError(chipTool, "Run command failure: %s", chip::ErrorStr(err)));
@@ -312,7 +312,7 @@ CHIP_ERROR Commands::RunCommand(int argc, char ** argv, bool interactive,
 
     // Now that the command is initialized, get our storage from it as needed
     // and set up our loging level.
-#ifdef CONFIG_USE_LOCAL_STORAGE
+#if defined(CONFIG_USE_LOCAL_STORAGE) && !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
     CHIP_ERROR err = mStorage.Init(nullptr, command->GetStorageDirectory().ValueOr(nullptr));
     if (err != CHIP_NO_ERROR)
     {
@@ -326,7 +326,7 @@ CHIP_ERROR Commands::RunCommand(int argc, char ** argv, bool interactive,
     UseStorageDirectory(chip::DeviceLayer::PersistedStorage::KeyValueStoreMgrImpl(), mStorage.GetDirectory());
 #endif // !CHIP_DISABLE_PLATFORM_KVS
 
-#endif // CONFIG_USE_LOCAL_STORAGE
+#endif // CONFIG_USE_LOCAL_STORAGE && !BOUFFALOLAB_CHIP_TOOL_CONTROLLER
 
     return command->Run();
 }

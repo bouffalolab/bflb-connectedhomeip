@@ -68,12 +68,12 @@ CHIP_ERROR LogAttributeAsJSON(const chip::app::ConcreteDataAttributePath & path,
     VerifyOrReturnError(gDelegate != nullptr, CHIP_NO_ERROR);
 
     Json::Value value;
-    value[kClusterIdKey]   = path.mClusterId;
+    value[kClusterIdKey]   = static_cast<Json::UInt64>(path.mClusterId);
     value[kEndpointIdKey]  = path.mEndpointId;
-    value[kAttributeIdKey] = path.mAttributeId;
+    value[kAttributeIdKey] = static_cast<Json::UInt64>(path.mAttributeId);
     if (path.mDataVersion.HasValue())
     {
-        value[kDataVersionKey] = path.mDataVersion.Value();
+        value[kDataVersionKey] = static_cast<Json::UInt64>(path.mDataVersion.Value());
     }
 
     chip::TLV::TLVReader reader;
@@ -89,9 +89,9 @@ CHIP_ERROR LogErrorAsJSON(const chip::app::ConcreteDataAttributePath & path, con
     VerifyOrReturnError(gDelegate != nullptr, CHIP_NO_ERROR);
 
     Json::Value value;
-    value[kClusterIdKey]   = path.mClusterId;
+    value[kClusterIdKey]   = static_cast<Json::UInt64>(path.mClusterId);
     value[kEndpointIdKey]  = path.mEndpointId;
-    value[kAttributeIdKey] = path.mAttributeId;
+    value[kAttributeIdKey] = static_cast<Json::UInt64>(path.mAttributeId);
 
     return LogError(value, status);
 }
@@ -101,9 +101,9 @@ CHIP_ERROR LogCommandAsJSON(const chip::app::ConcreteCommandPath & path, chip::T
     VerifyOrReturnError(gDelegate != nullptr, CHIP_NO_ERROR);
 
     Json::Value value;
-    value[kClusterIdKey]  = path.mClusterId;
+    value[kClusterIdKey]  = static_cast<Json::UInt64>(path.mClusterId);
     value[kEndpointIdKey] = path.mEndpointId;
-    value[kCommandIdKey]  = path.mCommandId;
+    value[kCommandIdKey]  = static_cast<Json::UInt64>(path.mCommandId);
 
     chip::TLV::TLVReader reader;
     reader.Init(*data);
@@ -118,9 +118,9 @@ CHIP_ERROR LogErrorAsJSON(const chip::app::ConcreteCommandPath & path, const chi
     VerifyOrReturnError(gDelegate != nullptr, CHIP_NO_ERROR);
 
     Json::Value value;
-    value[kClusterIdKey]  = path.mClusterId;
+    value[kClusterIdKey]  = static_cast<Json::UInt64>(path.mClusterId);
     value[kEndpointIdKey] = path.mEndpointId;
-    value[kCommandIdKey]  = path.mCommandId;
+    value[kCommandIdKey]  = static_cast<Json::UInt64>(path.mCommandId);
 
     return LogError(value, status);
 }
@@ -130,10 +130,10 @@ CHIP_ERROR LogEventAsJSON(const chip::app::EventHeader & header, chip::TLV::TLVR
     VerifyOrReturnError(gDelegate != nullptr, CHIP_NO_ERROR);
 
     Json::Value value;
-    value[kClusterIdKey]   = header.mPath.mClusterId;
+    value[kClusterIdKey]   = static_cast<Json::UInt64>(header.mPath.mClusterId);
     value[kEndpointIdKey]  = header.mPath.mEndpointId;
-    value[kEventIdKey]     = header.mPath.mEventId;
-    value[kEventNumberKey] = header.mEventNumber;
+    value[kEventIdKey]     = static_cast<Json::UInt64>(header.mPath.mEventId);
+    value[kEventNumberKey] = static_cast<Json::UInt64>(header.mEventNumber);
 
     chip::TLV::TLVReader reader;
     reader.Init(*data);
@@ -148,9 +148,9 @@ CHIP_ERROR LogErrorAsJSON(const chip::app::EventHeader & header, const chip::app
     VerifyOrReturnError(gDelegate != nullptr, CHIP_NO_ERROR);
 
     Json::Value value;
-    value[kClusterIdKey]  = header.mPath.mClusterId;
+    value[kClusterIdKey]  = static_cast<Json::UInt64>(header.mPath.mClusterId);
     value[kEndpointIdKey] = header.mPath.mEndpointId;
-    value[kEventIdKey]    = header.mPath.mEventId;
+    value[kEventIdKey]    = static_cast<Json::UInt64>(header.mPath.mEventId);
 
     return LogError(value, status);
 }
@@ -170,7 +170,7 @@ CHIP_ERROR LogGetCommissionerNodeId(chip::NodeId value)
 
     Json::Value rootValue;
     rootValue[kValueKey]             = Json::Value();
-    rootValue[kValueKey][kNodeIdKey] = value;
+    rootValue[kValueKey][kNodeIdKey] = static_cast<Json::UInt64>(value);
 
     auto valueStr = chip::JsonToString(rootValue);
     return gDelegate->LogJSON(valueStr.c_str());
@@ -234,7 +234,7 @@ CHIP_ERROR LogDiscoveredNodeData(const chip::Dnssd::CommissionNodeData & nodeDat
     value["vendorId"]           = commissionData.vendorId;
     value["productId"]          = commissionData.productId;
     value["commissioningMode"]  = commissionData.commissioningMode;
-    value["deviceType"]         = commissionData.deviceType;
+    value["deviceType"]         = static_cast<Json::UInt64>(commissionData.deviceType);
     value["deviceName"]         = commissionData.deviceName;
     value["rotatingId"]         = rotatingId;
     value["rotatingIdLen"]      = static_cast<uint64_t>(commissionData.rotatingIdLen);
@@ -247,12 +247,12 @@ CHIP_ERROR LogDiscoveredNodeData(const chip::Dnssd::CommissionNodeData & nodeDat
 
     if (resolutionData.mrpRetryIntervalIdle.has_value())
     {
-        value["mrpRetryIntervalIdle"] = resolutionData.mrpRetryIntervalIdle->count();
+        value["mrpRetryIntervalIdle"] = static_cast<Json::Int64>(resolutionData.mrpRetryIntervalIdle->count());
     }
 
     if (resolutionData.mrpRetryIntervalActive.has_value())
     {
-        value["mrpRetryIntervalActive"] = resolutionData.mrpRetryIntervalActive->count();
+        value["mrpRetryIntervalActive"] = static_cast<Json::Int64>(resolutionData.mrpRetryIntervalActive->count());
     }
 
     if (resolutionData.mrpRetryActiveThreshold.has_value())

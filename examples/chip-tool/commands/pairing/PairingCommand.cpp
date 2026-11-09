@@ -38,8 +38,10 @@
 #include <setup_payload/ManualSetupPayloadParser.h>
 #include <setup_payload/QRCodeSetupPayloadParser.h>
 
+#if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
 #include "../dcl/DCLClient.h"
 #include "../dcl/DisplayTermsAndConditions.h"
+#endif
 
 #include <algorithm>
 #include <app/CommandSender.h>
@@ -47,12 +49,11 @@
 #include <app/data-model/Encode.h>
 #include <clusters/CommissioningProxy/Commands.h>
 #include <inttypes.h>
+#if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
 #include <iostream>
+#endif
 #include <memory>
-#include <netdb.h>
-#include <netinet/in.h>
 #include <string>
-#include <sys/socket.h>
 
 using namespace ::chip;
 using namespace ::chip::Controller;
@@ -323,6 +324,7 @@ CommissioningParameters PairingCommand::GetCommissioningParameters()
         params.SetTermsAndConditionsAcknowledgement(termsAndConditionsAcknowledgement);
     }
 
+#if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
     // mTimeZoneList is an optional argument managed by TypedComplexArgument mComplex_TimeZones.
     // Since optional Complex arguments are not currently supported via the <chip::Optional> class,
     // we will use mTimeZoneList.data() value to determine if the argument was provided.
@@ -338,6 +340,7 @@ CommissioningParameters PairingCommand::GetCommissioningParameters()
     {
         params.SetDSTOffsets(mDSTOffsetList);
     }
+#endif
 
     if (mICDRegistration.ValueOr(false))
     {
@@ -748,6 +751,9 @@ void PairingCommand::OnCommissioningStageStart(PeerId peerId, CommissioningStage
 
 CHIP_ERROR PairingCommand::WiFiCredentialsNeeded(EndpointId endpoint)
 {
+#if defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
+    return CHIP_ERROR_NOT_IMPLEMENTED;
+#else
     if (mNetworkType != PairingNetworkType::None)
     {
         // We only support prompting for credentials when no credentials were
@@ -801,10 +807,14 @@ CHIP_ERROR PairingCommand::WiFiCredentialsNeeded(EndpointId endpoint)
     });
 
     return CHIP_NO_ERROR;
+#endif
 }
 
 CHIP_ERROR PairingCommand::ThreadCredentialsNeeded(EndpointId endpoint)
 {
+#if defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
+    return CHIP_ERROR_NOT_IMPLEMENTED;
+#else
     if (mNetworkType != PairingNetworkType::None)
     {
         // We only support prompting for credentials when no credentials were
@@ -847,6 +857,7 @@ CHIP_ERROR PairingCommand::ThreadCredentialsNeeded(EndpointId endpoint)
     });
 
     return CHIP_NO_ERROR;
+#endif
 }
 
 void PairingCommand::OnDiscoveredDevice(const Dnssd::CommissionNodeData & nodeData)
@@ -921,6 +932,10 @@ void PairingCommand::OnDeviceAttestationCompleted(Controller::DeviceCommissioner
 
 CHIP_ERROR PairingCommand::MaybeDisplayTermsAndConditions(CommissioningParameters & params)
 {
+#if defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
+    // The embedded controller has no DCL/JSON or interactive terminal support.
+    return CHIP_NO_ERROR;
+#else
     VerifyOrReturnError(mUseDCL.ValueOr(false), CHIP_NO_ERROR);
 
     Json::Value tc;
@@ -940,6 +955,7 @@ CHIP_ERROR PairingCommand::MaybeDisplayTermsAndConditions(CommissioningParameter
     }
 
     return CHIP_NO_ERROR;
+#endif
 }
 
 // ==========================================================================
