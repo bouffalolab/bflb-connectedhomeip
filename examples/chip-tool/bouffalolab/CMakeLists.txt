@@ -33,15 +33,17 @@ set(GN_ROOT_TARGET      ${CMAKE_CURRENT_LIST_DIR})
 set(Python3_EXECUTABLE "${CHIP_ROOT}/.environment/pigweed-venv/bin/python3"
     CACHE FILEPATH "Python3 executable" FORCE)
 
-if(CONFIG_MFD STREQUAL "y")
-  get_filename_component(_bl_sdk_base "${BL_SDK_BASE}" REALPATH)
-  set(_matter_board_dir "${CMAKE_BINARY_DIR}/matter_board")
-  set(_sdk_board_config_dir "${_bl_sdk_base}/bsp/board/${BOARD}/config")
-  file(MAKE_DIRECTORY "${_matter_board_dir}/config")
-  file(COPY "${_sdk_board_config_dir}/" DESTINATION "${_matter_board_dir}/config")
-  file(COPY "${EXAMPLES_PLAT_DIR}/bflb/flash_config/partition_cfg_4M.toml"
-       DESTINATION "${_matter_board_dir}/config")
-endif()
+get_filename_component(_bl_sdk_base "${BL_SDK_BASE}" REALPATH)
+set(_matter_board_dir "${CMAKE_BINARY_DIR}/matter_board")
+set(_sdk_board_config_dir "${_bl_sdk_base}/bsp/board/${BOARD}/config")
+file(MAKE_DIRECTORY "${_matter_board_dir}/config")
+file(COPY "${_sdk_board_config_dir}/" DESTINATION "${_matter_board_dir}/config")
+
+# The controller is a functional validation image rather than a production
+# image. Use a single large FW partition and omit the commissionee-only mfg,
+# MFD, media and secondary FW partitions.
+file(COPY "${CMAKE_CURRENT_LIST_DIR}/flash_config/partition_cfg_4M.toml"
+     DESTINATION "${_matter_board_dir}/config")
 
 # =============================================================================
 # SDK Setup
@@ -55,9 +57,7 @@ bflb_defer_constructors_to_platform_init()
 set(MATTER_GN_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/matter-gn")
 set(_matter_sdk_config_header "${CMAKE_BINARY_DIR}/generated/autoconfig.h")
 
-if(CONFIG_MFD STREQUAL "y")
-  set_property(GLOBAL PROPERTY FW_TOOL_CUSTOM_BOARD_DIR "${_matter_board_dir}")
-endif()
+set_property(GLOBAL PROPERTY FW_TOOL_CUSTOM_BOARD_DIR "${_matter_board_dir}")
 
 set_property(TARGET app PROPERTY CXX_STANDARD 17)
 set_property(TARGET app PROPERTY CXX_STANDARD_REQUIRED ON)
@@ -314,6 +314,7 @@ target_sources(app PRIVATE
   ${EXAMPLE_DIR}/common/ControllerTask.cpp
   ${EXAMPLE_DIR}/common/ControllerCommands.cpp
   ${EXAMPLE_DIR}/common/ControllerPlatformInit.cpp
+  ${EXAMPLE_DIR}/common/ControllerShell.cpp
   ${EXAMPLE_DIR}/common/KvsPersistentStorage.cpp
   ${EXAMPLES_PLAT_DIR}/common/bouffalo_sdk/platform_port.cpp
   ${EXAMPLES_PLAT_DIR}/common/route_hook/bflb_route_hook.c
@@ -321,6 +322,7 @@ target_sources(app PRIVATE
 
   # chip-tool IP commissioning command subset
   ${CHIP_TOOL_DIR}/commands/common/CHIPCommand.cpp
+  ${CHIP_TOOL_DIR}/commands/common/ControllerDataModelProvider.cpp
   ${CHIP_TOOL_DIR}/commands/common/Command.cpp
   ${CHIP_TOOL_DIR}/commands/common/Commands.cpp
   ${CHIP_TOOL_DIR}/commands/pairing/OpenCommissioningWindowCommand.cpp

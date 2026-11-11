@@ -18,6 +18,10 @@
 #include <string.h>
 
 #include <lwip/ethip6.h>
+#include <lwip/dhcp6.h>
+#include <lwip/ip4_addr.h>
+#include <lwip/ip6_addr.h>
+#include <lwip/nd6.h>
 #include <lwip/netif.h>
 #include <lwip/tcpip.h>
 #include <lwip/timeouts.h>
@@ -160,21 +164,27 @@ CHIP_ERROR BflbWiFiDriver::ConnectWiFiNetwork(const char * ssid, uint8_t ssidLen
     ConnectivityMgrImpl().ChangeWiFiStationState(ConnectivityManager::kWiFiStationState_Connecting);
 
     // Bounds check added to prevent buffer overflow vulnerabilities.
-    VerifyOrReturnError(ssidLen <= sizeof(conn_param.ssid), CHIP_ERROR_BUFFER_TOO_SMALL);
-
-    // Keep old behaviour due to compatibility with SDK
-    strncpy((char *) conn_param.ssid, ssid, ssidLen); // NOLINT(bugprone-unsafe-functions)
-    conn_param.ssid_len = ssidLen;
-
-    if (keyLen)
+#if defined(CONFIG_WL80211)
+    VerifyOrReturnError(ssidLen < sizeof(conn_param.ssid), CHIP_ERROR_BUFFER_TOO_SMALL);
+    VerifyOrReturnError(keyLen < sizeof(conn_param.key), CHIP_ERROR_BUFFER_TOO_SMALL);
+    memcpy(conn_param.ssid, ssid, ssidLen);
+    conn_param.ssid[ssidLen] = '\0';
+    if (keyLen != 0)
     {
-        // Bounds check added to prevent buffer overflow vulnerabilities.
+        memcpy(conn_param.key, key, keyLen);
+        conn_param.key[keyLen] = '\0';
+    }
+#else
+    VerifyOrReturnError(ssidLen <= sizeof(conn_param.ssid), CHIP_ERROR_BUFFER_TOO_SMALL);
+    memcpy(conn_param.ssid, ssid, ssidLen);
+    conn_param.ssid_len = ssidLen;
+    if (keyLen != 0)
+    {
         VerifyOrReturnError(keyLen <= sizeof(conn_param.key), CHIP_ERROR_BUFFER_TOO_SMALL);
-
-        // Keep old behaviour due to compatibility with SDK
-        strncpy((char *) conn_param.key, key, keyLen); // NOLINT(bugprone-unsafe-functions)
+        memcpy(conn_param.key, key, keyLen);
         conn_param.key_len = keyLen;
     }
+#endif
 
     conn_param.freq1         = 0;
     conn_param.freq2         = 0;
@@ -183,8 +193,7 @@ CHIP_ERROR BflbWiFiDriver::ConnectWiFiNetwork(const char * ssid, uint8_t ssidLen
     conn_param.quick_connect = 1;
     conn_param.timeout_ms    = -1;
 
-    wifi_mgmr_sta_connect(&conn_param);
-
+    VerifyOrReturnError(wifi_mgmr_sta_connect(&conn_param) == 0, CHIP_ERROR_INTERNAL);
     return CHIP_NO_ERROR;
 }
 
@@ -355,7 +364,11 @@ void BflbWiFiDriver::OnNetworkStatusChange()
 
 CHIP_ERROR BflbWiFiDriver::SetLastDisconnectReason(const ChipDeviceEvent * event)
 {
+#if defined(CONFIG_WL80211)
+    mLastDisconnectedReason = wifi_mgmr_sta_info_reason_code_get();
+#else
     mLastDisconnectedReason = wifi_mgmr_sta_info_status_code_get();
+#endif
 
     return CHIP_NO_ERROR;
 }
@@ -413,6 +426,18 @@ void NetworkEventHandler(const ChipDeviceEvent * event, intptr_t arg)
         ConnectivityMgrImpl().OnConnectivityChanged(deviceInterface_getNetif());
         break;
     case kWiFiOnConnected:
+#if defined(CONFIG_FHOST)
+        // The SDK's automatic station connect path can report association
+        // before starting its IPv4 DHCP client. Start it explicitly here so
+        // persisted networks also obtain an IPv4 address after reboot.
+        {
+            const int dhcpError = wifi_sta_dhcp_client_start(0);
+            if (dhcpError != 0)
+            {
+                ChipLogError(DeviceLayer, "Failed to start Wi-Fi DHCP client after association");
+            }
+        }
+#endif // CONFIG_FHOST
         BflbWiFiDriver::GetInstance().OnNetworkStatusChange();
         break;
     case kGotIpAddress:
@@ -445,7 +470,9 @@ extern "C" void wifi_event_handler(async_input_event_t ev, void * priv)
     switch (code)
     {
     case CODE_WIFI_ON_INIT_DONE:
+#if defined(CONFIG_FHOST)
         wifi_mgmr_init();
+#endif
         break;
     case CODE_WIFI_ON_MGMR_DONE:
         wifi_mgmr_sta_autoconnect_enable();
@@ -486,24 +513,48 @@ extern "C" void network_netif_ext_callback(struct netif * nif, netif_nsc_reason_
 
     memset(&event, 0, sizeof(ChipDeviceEvent));
 
-    if ((LWIP_NSC_STATUS_CHANGED & reason) && args && !nif->ip6_autoconfig_enabled)
+#if defined(CONFIG_WL80211)
+    struct netif * staNetif = deviceInterface_getNetif();
+    const bool isStaNetifAdded = (reason & LWIP_NSC_NETIF_ADDED) && nif == staNetif;
+#else
+    const bool isStaNetifAdded = false;
+#endif
+    const bool isNetifStatusChanged = (reason & LWIP_NSC_STATUS_CHANGED) && args && !nif->ip6_autoconfig_enabled;
+
+    if (isStaNetifAdded || isNetifStatusChanged)
     {
         nif->flags |= NETIF_FLAG_ETHERNET | NETIF_FLAG_MLD6;
         nif->output_ip6 = ethip6_output;
         netif_create_ip6_linklocal_address(nif, 1);
-        nif->ip6_autoconfig_enabled = 1;
+        netif_set_ip6_autoconfig_enabled(nif, 1);
+#if defined(CONFIG_WL80211) && LWIP_IPV6_DHCP6
+        if (isStaNetifAdded)
+        {
+            err_t error = dhcp6_enable_stateless(nif);
+            if (error != ERR_OK)
+            {
+                ChipLogError(DeviceLayer, "Failed to enable stateless DHCPv6: %d", error);
+            }
+            nd6_restart_netif(nif);
+        }
+#endif
     }
 
     if (((LWIP_NSC_IPV6_ADDR_STATE_CHANGED | LWIP_NSC_IPV6_SET) & reason) && args)
     {
-        if (args->ipv6_addr_state_changed.addr_index >= LWIP_IPV6_NUM_ADDRESSES ||
-            ip6_addr_islinklocal(netif_ip6_addr(nif, args->ipv6_addr_state_changed.addr_index)))
+        const uint8_t addrIndex = args->ipv6_addr_state_changed.addr_index;
+        if (addrIndex >= LWIP_IPV6_NUM_ADDRESSES)
         {
             return;
         }
 
-        if (netif_ip6_addr_state(nif, args->ipv6_addr_state_changed.addr_index) != args->ipv6_addr_state_changed.old_state &&
-            ip6_addr_ispreferred(netif_ip6_addr_state(nif, args->ipv6_addr_state_changed.addr_index)))
+        const uint8_t addressState = netif_ip6_addr_state(nif, addrIndex);
+        if (ip6_addr_islinklocal(netif_ip6_addr(nif, addrIndex)))
+        {
+            return;
+        }
+
+        if (addressState != args->ipv6_addr_state_changed.old_state && ip6_addr_ispreferred(addressState))
         {
             event.Type = kGotIpv6Address;
             PlatformMgr().PostEventOrDie(&event);

@@ -91,6 +91,7 @@ void ConnectivityManagerImpl::OnWiFiStationDisconnected()
     event.WiFiConnectivityChange.Result = kConnectivity_Lost;
     PlatformMgr().PostEventOrDie(&event);
 
+#if defined(CONFIG_FHOST)
     switch (reason)
     {
     case WLAN_FW_TX_ASSOC_FRAME_ALLOCATE_FAIILURE:
@@ -142,6 +143,12 @@ void ConnectivityManagerImpl::OnWiFiStationDisconnected()
         }
         break;
     }
+#else
+    if (delegate)
+    {
+        delegate->OnAssociationFailureDetected(associationFailureCause, reason);
+    }
+#endif
 
     if (delegate)
     {

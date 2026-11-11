@@ -157,8 +157,11 @@ static CHIP_ERROR WiFiConnectHandler(int argc, char ** argv)
 
     ChipLogProgress(Shell, "Adding/Updating network %s", argv[0]);
 
-    /* AddOrUpdateNetwork() checks ssid length and password length. The network info is not persistent. */
+    /* AddOrUpdateNetwork() validates credentials; commit them so the platform
+     * can reconnect to this network after a reboot.
+     */
     GetWiFiDriver()->AddOrUpdateNetwork(ssidSpan, passwordSpan, debugText, networkIndex);
+    ReturnErrorOnFailure(GetWiFiDriver()->CommitConfiguration());
 
     ChipLogProgress(Shell, "Connecting to network");
     /* Connection event will be returned in OnWiFiConnectivityChange from DeviceCallbacks.cpp */

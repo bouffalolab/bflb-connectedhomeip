@@ -22,10 +22,10 @@
 #include <commands/icd/ICDCommand.h>
 #endif
 #include <controller/CHIPDeviceControllerFactory.h>
+#include "ControllerDataModelProvider.h"
 #if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
 #include <credentials/attestation_verifier/FileAttestationTrustStore.h>
 #include <credentials/attestation_verifier/TestDACRevocationDelegateImpl.h>
-#include <data-model-providers/codegen/Instance.h>
 #endif
 #include <lib/core/CHIPConfig.h>
 #include <lib/core/CHIPVendorIdentifiers.hpp>
@@ -64,6 +64,8 @@ chip::Crypto::RawKeySessionKeystore CHIPCommand::sSessionKeystore;
 chip::app::CheckInHandler CHIPCommand::sCheckInHandler;
 
 namespace {
+
+chip::Controller::ControllerDataModelProvider gControllerDataModelProvider;
 
 #if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
 CHIP_ERROR GetAttestationTrustStore(const char * paaTrustStorePath, const chip::Credentials::AttestationTrustStore ** trustStore)
@@ -146,12 +148,7 @@ CHIP_ERROR CHIPCommand::MaybeSetUpStack()
     factoryInitParams.opCertStore              = &mOpCertStore;
     factoryInitParams.enableServerInteractions = NeedsOperationalAdvertising();
     factoryInitParams.sessionKeystore          = &sSessionKeystore;
-    // This target is an IP commissioner only. It does not host a generated
-    // server data model, so avoid pulling the codegen provider into the
-    // embedded image.
-#if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
-    factoryInitParams.dataModelProvider = chip::app::CodegenDataModelProviderInstance(&mDefaultStorage);
-#endif
+    factoryInitParams.dataModelProvider = &gControllerDataModelProvider;
 
     // Init group data provider that will be used for all group keys and IPKs for the
     // chip-tool-configured fabrics. This is OK to do once since the fabric tables
@@ -297,7 +294,16 @@ CHIP_ERROR CHIPCommand::EnsureCommissionerForIdentity(std::string identity)
 
 CHIP_ERROR CHIPCommand::Run()
 {
-    ReturnErrorOnFailure(MaybeSetUpStack());
+    CHIP_ERROR setupError;
+#if defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
+    auto & platformManager = chip::DeviceLayer::PlatformMgr();
+    platformManager.LockChipStack();
+    setupError = MaybeSetUpStack();
+    platformManager.UnlockChipStack();
+#else
+    setupError = MaybeSetUpStack();
+#endif
+    ReturnErrorOnFailure(setupError);
 
     CHIP_ERROR err = StartWaiting(GetWaitDuration());
 
@@ -311,10 +317,22 @@ CHIP_ERROR CHIPCommand::Run()
     }
     else
     {
+#if defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
+        platformManager.LockChipStack();
+#endif
         CleanupAfterRun();
+#if defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
+        platformManager.UnlockChipStack();
+#endif
     }
 
+#if defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
+    platformManager.LockChipStack();
+#endif
     MaybeTearDownStack();
+#if defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
+    platformManager.UnlockChipStack();
+#endif
 
     return err;
 }
@@ -619,26 +637,41 @@ void CHIPCommand::CleanupAfterRun()
 
 CHIP_ERROR CHIPCommand::RunOnMatterQueue(MatterWorkCallback callback, chip::System::Clock::Timeout timeout, bool * timedOut)
 {
+#if defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
+    mWaitingTask = xTaskGetCurrentTaskHandle();
+    (void) ulTaskNotifyTake(pdTRUE, 0);
+#else
     {
         std::lock_guard<std::mutex> lk(cvWaitingForResponseMutex);
         mWaitingForResponse = true;
     }
+#endif
 
     auto err = chip::DeviceLayer::PlatformMgr().ScheduleWork(callback, reinterpret_cast<intptr_t>(this));
     if (CHIP_NO_ERROR != err)
     {
+#if defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
+        mWaitingTask = nullptr;
+#else
         {
             std::lock_guard<std::mutex> lk(cvWaitingForResponseMutex);
             mWaitingForResponse = false;
         }
+#endif
         return err;
     }
 
+#if defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
+    const TickType_t waitTicks = pdMS_TO_TICKS(std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count());
+    *timedOut = (ulTaskNotifyTake(pdTRUE, waitTicks) == 0);
+    mWaitingTask = nullptr;
+#else
     auto waitingUntil = std::chrono::system_clock::now() + std::chrono::duration_cast<std::chrono::seconds>(timeout);
     {
         std::unique_lock<std::mutex> lk(cvWaitingForResponseMutex);
         *timedOut = !cvWaitingForResponse.wait_until(lk, waitingUntil, [this]() { return !this->mWaitingForResponse; });
     }
+#endif
 
     return CHIP_NO_ERROR;
 }
@@ -696,11 +729,18 @@ CHIP_ERROR CHIPCommand::StartWaiting(chip::System::Clock::Timeout duration)
 void CHIPCommand::StopWaiting()
 {
 #if CONFIG_USE_SEPARATE_EVENTLOOP
+#if defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
+    if (mWaitingTask != nullptr)
+    {
+        xTaskNotifyGive(mWaitingTask);
+    }
+#else
     {
         std::lock_guard<std::mutex> lk(cvWaitingForResponseMutex);
         mWaitingForResponse = false;
     }
     cvWaitingForResponse.notify_all();
+#endif
 #else  // CONFIG_USE_SEPARATE_EVENTLOOP
     LogErrorOnFailure(chip::DeviceLayer::PlatformMgr().StopEventLoopTask());
 #endif // CONFIG_USE_SEPARATE_EVENTLOOP

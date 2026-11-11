@@ -10,6 +10,27 @@ config WIFI
 	bool "Wi-Fi STA transport (controller)"
 	default y
 
+choice
+	prompt "Wi-Fi implementation"
+	default CHIP_WIFI_BACKEND_WL80211
+
+config CHIP_WIFI_BACKEND_WL80211
+	bool "WL80211"
+	select WL80211
+	select WIFI6
+	select BL_WPA_SUPPLICANT
+	help
+	  Use the WL80211 Wi-Fi manager and lwIP network interface.
+
+config CHIP_WIFI_BACKEND_FHOST
+	bool "FHOST"
+	select FHOST
+	select WIFI6
+	help
+	  Use the legacy FHOST Wi-Fi manager and network interface.
+
+endchoice
+
 config ETHERNET
 	bool "Ethernet transport"
 	default n

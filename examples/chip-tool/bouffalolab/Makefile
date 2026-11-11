@@ -24,8 +24,17 @@ CPU_ID  ?= ap
 # =============================================================================
 
 CONFIG_WIFI    ?= y
+CONFIG_CHIP_WIFI_BACKEND_WL80211 ?= y
+CONFIG_CHIP_WIFI_BACKEND_FHOST   ?= n
 CONFIG_THREAD  ?= n
 CONFIG_ETHERNET ?= n
+
+ifeq ($(CONFIG_CHIP_WIFI_BACKEND_FHOST),y)
+override CONFIG_CHIP_WIFI_BACKEND_WL80211 := n
+else
+override CONFIG_CHIP_WIFI_BACKEND_FHOST := n
+override CONFIG_CHIP_WIFI_BACKEND_WL80211 := y
+endif
 
 # =============================================================================
 # Optional Features
@@ -33,6 +42,7 @@ CONFIG_ETHERNET ?= n
 
 # No factory data partition: a controller does not need DAC/PAI credentials.
 CONFIG_MFD                    ?= n
+CONFIG_PSRAM                  ?= y
 CONFIG_CHIP_HEAP_MONITOR      ?= n
 CONFIG_CHIP_ROTATING_DEVICE_ID ?= n
 CONFIG_COREDUMP               ?= n
@@ -55,6 +65,7 @@ cmake_definition += -DCONFIG_ETHERNET=${CONFIG_ETHERNET}
 cmake_definition += -DCONFIG_SHELL=y
 cmake_definition += -DCONFIG_SHELL_CMD_SIZE=512
 cmake_definition += -DCONFIG_MFD=${CONFIG_MFD}
+cmake_definition += -DCONFIG_PSRAM=${CONFIG_PSRAM}
 cmake_definition += -DCONFIG_CHIP_ROTATING_DEVICE_ID=${CONFIG_CHIP_ROTATING_DEVICE_ID}
 cmake_definition += -DCONFIG_CHIP_HEAP_MONITOR=${CONFIG_CHIP_HEAP_MONITOR}
 cmake_definition += -DCONFIG_COREDUMP=${CONFIG_COREDUMP}

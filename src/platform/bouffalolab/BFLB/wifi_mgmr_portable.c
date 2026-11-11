@@ -13,11 +13,25 @@
 #endif
 
 #include <FreeRTOS.h>
+#include <task.h>
+#include <timers.h>
 #include <lwip/tcpip.h>
+#include <macsw_plat.h>
 
+#if defined(CONFIG_FHOST) && defined(CONFIG_WL80211)
+#error "CONFIG_FHOST and CONFIG_WL80211 are mutually exclusive"
+#endif
+
+#if defined(CONFIG_FHOST)
 #include <fhost_api.h>
+#elif defined(CONFIG_WL80211)
+#include <wl80211.h>
+#else
+#error "Select exactly one Bouffalo Wi-Fi backend: CONFIG_FHOST or CONFIG_WL80211"
+#endif
 #include <wifi_mgmr_ext.h>
 #include <wifi_mgmr_portable.h>
+#include <async_event.h>
 
 #define WIFI_STACK_SIZE (1536)
 #define TASK_PRIORITY_FW (16)
@@ -27,11 +41,16 @@ static netif_ext_callback_t netifExtCallback;
 
 struct netif * deviceInterface_getNetif(void)
 {
+#if defined(CONFIG_WL80211)
+    extern struct netif vif2netif[];
+    return &vif2netif[WL80211_VIF_STA];
+#else
     LOCK_TCPIP_CORE();
     struct netif * net_if = netif_find("wl1");
     UNLOCK_TCPIP_CORE();
 
     return net_if;
+#endif
 }
 
 int wifi_start_scan(const uint8_t * ssid, uint32_t length)
@@ -41,17 +60,44 @@ int wifi_start_scan(const uint8_t * ssid, uint32_t length)
     memset(&config, 0, sizeof(wifi_mgmr_scan_params_t));
     if (length && length <= MGMR_SSID_LEN)
     {
+#if defined(CONFIG_WL80211)
+        config.ssid_length = (uint8_t) length;
+        memcpy(config.ssid_array, ssid, length);
+#else
         memcpy(config.ssid_array, ssid, length);
         config.ssid_length = length;
+#endif
     }
 
     return wifi_mgmr_sta_scan(&config);
 }
 
+#if defined(CONFIG_WL80211)
+static void async_event_handler(void * arg1, uint32_t arg2)
+{
+    (void) arg1;
+    (void) arg2;
+    vTaskSuspendAll();
+    async_event_loop();
+    (void) xTaskResumeAll();
+}
+
+static void async_event_loop_wake(void)
+{
+    TickType_t wait = portMAX_DELAY;
+    if (xTimerGetTimerDaemonTaskHandle() == xTaskGetCurrentTaskHandle())
+    {
+        wait = 0;
+    }
+    configASSERT(xTimerPendFunctionCall(async_event_handler, NULL, 0, wait) == pdPASS);
+}
+#endif
+
 void wifi_start_firmware_task(void)
 {
     memset(&netifExtCallback, 0, sizeof(netifExtCallback));
 
+#if defined(CONFIG_FHOST)
     GLB_PER_Clock_UnGate(GLB_AHB_CLOCK_IP_WIFI_PHY | GLB_AHB_CLOCK_IP_WIFI_MAC_PHY | GLB_AHB_CLOCK_IP_WIFI_PLATFORM);
     GLB_AHB_MCU_Software_Reset(GLB_AHB_MCU_SW_WIFI);
 
@@ -66,4 +112,14 @@ void wifi_start_firmware_task(void)
     async_register_event_filter(EV_WIFI, wifi_event_handler, NULL);
     wifi_task_create();
     fhost_init();
+#else
+    async_event_init(async_event_loop_wake);
+    async_register_event_filter(EV_WIFI, wifi_event_handler, NULL);
+    LOCK_TCPIP_CORE();
+    netif_add_ext_callback(&netifExtCallback, network_netif_ext_callback);
+    UNLOCK_TCPIP_CORE();
+    wifi_task_create();
+    wl80211_init();
+    wifi_mgmr_init();
+#endif
 }

@@ -126,7 +126,7 @@ void vApplicationSleep(uint32_t xExpectedIdleTime);
 #ifdef __cplusplus
 extern "C" uint64_t bflb_mtimer_get_time_us();
 #else
-extern uint64_t bflb_mtimer_get_time_us();
+extern uint64_t bflb_mtimer_get_time_us(void);
 #endif
 #define portCONFIGURE_TIMER_FOR_RUN_TIME_STATS() ((void) 0)
 #define portGET_RUN_TIME_COUNTER_VALUE() bflb_mtimer_get_time_us()

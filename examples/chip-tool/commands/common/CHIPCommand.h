@@ -43,6 +43,11 @@
 
 #include <string>
 
+#if defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER) && CONFIG_USE_SEPARATE_EVENTLOOP
+#include <FreeRTOS.h>
+#include <task.h>
+#endif
+
 inline constexpr char kIdentityAlpha[] = "alpha";
 inline constexpr char kIdentityBeta[]  = "beta";
 inline constexpr char kIdentityGamma[] = "gamma";
@@ -268,9 +273,13 @@ private:
     void StopWaiting();
 
 #if CONFIG_USE_SEPARATE_EVENTLOOP
+#if defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
+    TaskHandle_t mWaitingTask = nullptr;
+#else
     std::condition_variable cvWaitingForResponse;
     std::mutex cvWaitingForResponseMutex;
     bool mWaitingForResponse{ true };
+#endif
 #endif // CONFIG_USE_SEPARATE_EVENTLOOP
 
 #if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)

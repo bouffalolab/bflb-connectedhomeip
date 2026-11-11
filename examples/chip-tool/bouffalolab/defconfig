@@ -55,13 +55,18 @@ CONFIG_BLE_USE_MAC2                         = n
 CONFIG_BT_OAD_SERVER                        = n
 CONFIG_BT_STACK_CLI                         = n
 
-# WiFi 6 STA via fhost + wifi_mgmr
+# WiFi 6 STA; WL80211 is the default, with FHOST retained as an option.
 ifeq ($(CONFIG_WIFI),y)
   CONFIG_WIFI6                              = y
   CONFIG_MACSW_SELECT                       = default
-  CONFIG_FHOST                              = y
+  ifeq ($(CONFIG_CHIP_WIFI_BACKEND_FHOST),y)
+    CONFIG_FHOST                            = y
+    CONFIG_WL80211                           = n
+  else
+    CONFIG_FHOST                            = n
+    CONFIG_WL80211                           = y
+  endif
   CONFIG_IPV6                               = y
-  # The SDK's Wi-Fi6 net_al_ext adapter links its DHCP server API unconditionally.
   CONFIG_DHCPD                              = y
 endif
 

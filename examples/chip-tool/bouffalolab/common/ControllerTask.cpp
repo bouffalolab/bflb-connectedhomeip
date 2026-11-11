@@ -21,6 +21,8 @@
 #include <platform/CHIPDeviceLayer.h>
 #include <platform/bouffalolab/common/NetworkCommissioningDriver.h>
 
+void cmd_misc_init(void);
+
 namespace {
 
 constexpr uint32_t kControllerTaskStackSize = 8192;
@@ -30,6 +32,7 @@ void ControllerTaskMain(void *)
 {
     auto & wifiDriver = chip::DeviceLayer::NetworkCommissioning::BflbWiFiDriver::GetInstance();
     chip::Shell::Engine::Root().Init();
+    cmd_misc_init();
     chip::Shell::SetWiFiDriver(&wifiDriver);
     ControllerCommands::Init();
 
@@ -49,7 +52,7 @@ void ControllerTaskMain(void *)
         return;
     }
 
-    ChipLogProgress(NotSpecified, "Matter IP controller ready; use the matter shell command.");
+    ChipLogProgress(NotSpecified, "Matter IP controller ready; use: matter chip-tool <command> ...");
     vTaskDelete(nullptr);
 }
 
