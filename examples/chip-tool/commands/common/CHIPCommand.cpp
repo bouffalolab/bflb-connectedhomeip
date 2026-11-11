@@ -66,6 +66,9 @@ chip::app::CheckInHandler CHIPCommand::sCheckInHandler;
 namespace {
 
 chip::Controller::ControllerDataModelProvider gControllerDataModelProvider;
+#if defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
+bool gControllerRuntimeInitialized = false;
+#endif
 
 #if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
 CHIP_ERROR GetAttestationTrustStore(const char * paaTrustStorePath, const chip::Credentials::AttestationTrustStore ** trustStore)
@@ -235,6 +238,11 @@ CHIP_ERROR CHIPCommand::MaybeSetUpStack()
 
 void CHIPCommand::MaybeTearDownStack()
 {
+#if defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
+    // The Bouffalo chip-tool runs inside a persistent shell with a persistent
+    // Matter event-loop task. Releasing the last controller here would shut
+    // down PlatformMgr while that task is still running.
+#else
     if (IsInteractive())
     {
         return;
@@ -253,6 +261,7 @@ void CHIPCommand::MaybeTearDownStack()
 #if !defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
     StopTracing();
 #endif
+#endif // BOUFFALOLAB_CHIP_TOOL_CONTROLLER
 }
 
 CHIP_ERROR CHIPCommand::EnsureCommissionerForIdentity(std::string identity)
@@ -297,9 +306,20 @@ CHIP_ERROR CHIPCommand::Run()
     CHIP_ERROR setupError;
 #if defined(BOUFFALOLAB_CHIP_TOOL_CONTROLLER)
     auto & platformManager = chip::DeviceLayer::PlatformMgr();
-    platformManager.LockChipStack();
-    setupError = MaybeSetUpStack();
-    platformManager.UnlockChipStack();
+    if (!gControllerRuntimeInitialized)
+    {
+        platformManager.LockChipStack();
+        setupError = MaybeSetUpStack();
+        platformManager.UnlockChipStack();
+        if (setupError == CHIP_NO_ERROR)
+        {
+            gControllerRuntimeInitialized = true;
+        }
+    }
+    else
+    {
+        setupError = CHIP_NO_ERROR;
+    }
 #else
     setupError = MaybeSetUpStack();
 #endif
