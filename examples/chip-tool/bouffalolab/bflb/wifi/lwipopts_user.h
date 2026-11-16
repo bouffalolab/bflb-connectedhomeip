@@ -107,7 +107,7 @@ static inline void * _lwip_calloc(size_t count, size_t size)
 #define LWIP_DHCP 1
 #define LWIP_DNS 1
 #define LWIP_DNS_SERVER 0
-#define LWIP_IGMP 0
+#define LWIP_IGMP 1
 #define LWIP_SO_RCVTIMEO 1
 #define LWIP_SO_SNDTIMEO 1
 #define SO_REUSE 1
