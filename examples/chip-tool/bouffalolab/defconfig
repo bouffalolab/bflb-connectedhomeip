@@ -24,6 +24,9 @@ CONFIG_MATTER                               = n
 
 CONFIG_MBEDTLS                              = y
 CONFIG_MBEDTLS_V2                           = n
+CONFIG_MBEDTLS_HAVE_TIME                    = y
+CONFIG_MBEDTLS_HAVE_TIME_DATE               = y
+CONFIG_MBEDTLS_X509_CSR_PARSE_C              = y
 CONFIG_MBEDTLS_AES_USE_HW                   = y
 CONFIG_MBEDTLS_BIGNUM_USE_HW                = y
 CONFIG_MBEDTLS_ECC_USE_HW                   = y

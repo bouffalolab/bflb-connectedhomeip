@@ -10,6 +10,7 @@
 
 #include "ControllerTask.h"
 #include "ControllerCommands.h"
+#include "SntpTimeSync.h"
 
 #include <FreeRTOS.h>
 #include <task.h>
@@ -20,6 +21,7 @@
 #include <lib/support/logging/CHIPLogging.h>
 #include <platform/CHIPDeviceLayer.h>
 #include <platform/bouffalolab/common/NetworkCommissioningDriver.h>
+#include <system/SystemClock.h>
 
 void cmd_misc_init(void);
 
@@ -52,11 +54,28 @@ void ControllerTaskMain(void *)
         return;
     }
 
+    SntpTimeSync::Start();
+
     ChipLogProgress(NotSpecified, "Matter IP controller ready; use: matter chip-tool <command> ...");
     vTaskDelete(nullptr);
 }
 
 } // namespace
+
+extern "C" bool SntpTimeSyncSetMatterTime(uint32_t unixSeconds, uint32_t microseconds)
+{
+    const uint64_t unixTimeMicroseconds = static_cast<uint64_t>(unixSeconds) * chip::kMicrosecondsPerSecond + microseconds;
+
+    const CHIP_ERROR err =
+        chip::System::SystemClock().SetClock_RealTime(chip::System::Clock::Microseconds64(unixTimeMicroseconds));
+    if (err != CHIP_NO_ERROR)
+    {
+        ChipLogError(NotSpecified, "Failed to set Matter system time: %s", chip::ErrorStr(err));
+        return false;
+    }
+
+    return true;
+}
 
 void ControllerTask::Start()
 {

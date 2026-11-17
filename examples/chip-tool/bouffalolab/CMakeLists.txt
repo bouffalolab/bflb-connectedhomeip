@@ -312,6 +312,7 @@ target_include_directories(app PRIVATE
 
 target_sources(app PRIVATE
   ${EXAMPLE_DIR}/common/ControllerTask.cpp
+  ${EXAMPLE_DIR}/common/SntpTimeSync.c
   ${EXAMPLE_DIR}/common/ControllerCommands.cpp
   ${EXAMPLE_DIR}/common/ControllerPlatformInit.cpp
   ${EXAMPLE_DIR}/common/ControllerShell.cpp
