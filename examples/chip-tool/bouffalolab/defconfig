@@ -7,6 +7,8 @@ CONFIG_VSNPRINTF_LONG_LONG                  = y
 
 CONFIG_BFLB_MTD                             = y
 CONFIG_PARTITION                            = y
+# Use the controller-specific table for both image packing and flashing.
+CONFIG_OVERRIDE_PTFILE                      = flash_config/partition_cfg_4M.toml
 CONFIG_LITTLEFS                             = y
 CONFIG_FOTA                                 = n
 

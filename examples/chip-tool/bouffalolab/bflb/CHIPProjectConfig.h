@@ -25,6 +25,12 @@
 
 #pragma once
 
+// CSR validation during controller commissioning needs more stack than the
+// default Bouffalo Matter event-loop task allocation.
+#ifndef CHIP_DEVICE_CONFIG_CHIP_TASK_STACK_SIZE
+#define CHIP_DEVICE_CONFIG_CHIP_TASK_STACK_SIZE (16 * 1024)
+#endif
+
 // The controller commissions other devices; it never advertises itself.
 #ifndef CHIP_DEVICE_CONFIG_CHIPOBLE_ENABLE_ADVERTISING_AUTOSTART
 #define CHIP_DEVICE_CONFIG_CHIPOBLE_ENABLE_ADVERTISING_AUTOSTART 0
