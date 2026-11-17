@@ -190,8 +190,8 @@ matter_add_gn_arg_bool("chip_build_controller" TRUE)
 matter_add_gn_arg_bool("chip_enable_icd_client" TRUE)
 matter_add_gn_arg_bool("chip_enable_ota_requestor" FALSE)
 
-# Stage A: commission over IP only. Stage B flips BLE on for `pairing ble`.
-matter_add_gn_arg_bool("chip_config_network_layer_ble" FALSE)
+# Enable the BLE transport for commissioning commands such as `pairing ble-wifi`.
+matter_add_gn_arg_bool("chip_config_network_layer_ble" TRUE)
 
 matter_add_gn_arg_bool("chip_enable_factory_data" CONFIG_MFD STREQUAL "y")
 matter_add_gn_arg_bool("chip_enable_additional_data_advertising" FALSE)
