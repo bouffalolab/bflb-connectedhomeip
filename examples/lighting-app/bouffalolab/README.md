@@ -201,6 +201,15 @@ Build BL616DK with Wi-Fi:
 make -C examples/lighting-app/bouffalolab CONFIG_WIFI=y
 ```
 
+BL616, BL616CL, and BL618DG lighting Wi-Fi builds use WL80211 by default.
+Select the optional FHOST backend with `CONFIG_WL80211=n`:
+
+```shell
+make -C examples/lighting-app/bouffalolab CONFIG_WIFI=y CONFIG_WL80211=n
+```
+
+Use a separate build directory when switching Wi-Fi backends.
+
 Build BL616DK with Thread:
 
 ```shell

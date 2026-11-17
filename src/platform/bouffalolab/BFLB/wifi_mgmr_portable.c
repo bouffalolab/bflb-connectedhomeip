@@ -97,7 +97,20 @@ void wifi_start_firmware_task(void)
 {
     memset(&netifExtCallback, 0, sizeof(netifExtCallback));
 
-#if defined(CONFIG_FHOST)
+#if defined(CONFIG_SYSINIT) && defined(CONFIG_WL80211)
+    /* SYSINIT has already started the Wi-Fi and lwIP services. Matter still
+     * owns its event subscriptions, but must not invoke the legacy startup API. */
+    async_register_event_filter(EV_WIFI, wifi_event_handler, NULL);
+    LOCK_TCPIP_CORE();
+    netif_add_ext_callback(&netifExtCallback, network_netif_ext_callback);
+    struct netif * staNetif = deviceInterface_getNetif();
+    if (staNetif != NULL)
+    {
+        /* The SDK creates the STA netif before Matter registers this callback. */
+        network_netif_ext_callback(staNetif, LWIP_NSC_NETIF_ADDED, NULL);
+    }
+    UNLOCK_TCPIP_CORE();
+#elif defined(CONFIG_FHOST)
     GLB_PER_Clock_UnGate(GLB_AHB_CLOCK_IP_WIFI_PHY | GLB_AHB_CLOCK_IP_WIFI_MAC_PHY | GLB_AHB_CLOCK_IP_WIFI_PLATFORM);
     GLB_AHB_MCU_Software_Reset(GLB_AHB_MCU_SW_WIFI);
 

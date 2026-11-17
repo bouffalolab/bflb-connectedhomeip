@@ -35,12 +35,19 @@ void platform_port_init(void)
 {
     bl_sys_rstinfo_init();
 
+#if !defined(CONFIG_SYSINIT)
+    // SYSINIT owns board services when enabled; board_init() is only the
+    // compatibility entry point for legacy SDK startup.
     board_init();
+#endif
 #if CONFIG_ENABLE_CHIP_SHELL
     struct bflb_device_s * uart0 = bflb_device_get_by_name("uart0");
     shell_init_with_task(uart0);
 #endif
+#if !defined(CONFIG_SYSINIT)
+    // The partition table and MTD are initialized by SYSINIT on current SDKs.
     bflb_mtd_init();
+#endif
 
     app_pre_matter_init();
 

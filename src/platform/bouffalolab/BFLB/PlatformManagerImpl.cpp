@@ -74,11 +74,13 @@ CHIP_ERROR PlatformManagerImpl::_InitChipStack(void)
     }
 
     CHIP_ERROR err  = CHIP_NO_ERROR;
+#if (CHIP_DEVICE_CONFIG_ENABLE_WIFI || CHIP_DEVICE_CONFIG_ENABLE_THREAD) && !defined(CONFIG_SYSINIT)
     int iret_rfInit = -1;
+#endif
 
     pt_table_set_flash_operation(bflb_flash_erase, bflb_flash_write, bflb_flash_read);
 
-#if CHIP_DEVICE_CONFIG_ENABLE_WIFI || CHIP_DEVICE_CONFIG_ENABLE_THREAD
+#if (CHIP_DEVICE_CONFIG_ENABLE_WIFI || CHIP_DEVICE_CONFIG_ENABLE_THREAD) && !defined(CONFIG_SYSINIT)
     VerifyOrDieWithMsg(0 == (iret_rfInit = rfparam_init(0, NULL, 0)), DeviceLayer, "rfparam_init failed with %d", iret_rfInit);
 #endif
 
@@ -86,7 +88,7 @@ CHIP_ERROR PlatformManagerImpl::_InitChipStack(void)
     // The SDK startup owns EMAC contexts, DMA pools, DHCP and PHY polling,
     // and initializes lwIP itself. Do not start a second tcpip thread here.
     VerifyOrReturnError(lwip_emac_start(nullptr, 0) == 0, CHIP_ERROR_INTERNAL);
-#elif CHIP_SYSTEM_CONFIG_USE_LWIP
+#elif CHIP_SYSTEM_CONFIG_USE_LWIP && !defined(CONFIG_SYSINIT)
     tcpip_init(NULL, NULL);
 #endif
 

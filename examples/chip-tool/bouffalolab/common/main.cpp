@@ -26,9 +26,12 @@ extern "C" int START_ENTRY(void)
     ChipLogProgress(NotSpecified, "bouffalolab Matter IP controller, built at " __DATE__ " " __TIME__);
     ControllerTask::Start();
 
+#if !defined(CONFIG_SYSINIT)
     vTaskStartScheduler();
     ChipLogError(NotSpecified, "FreeRTOS scheduler failed to start");
     for (;;)
     {
     }
+#endif
+    return 0;
 }

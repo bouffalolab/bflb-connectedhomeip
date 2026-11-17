@@ -7,7 +7,7 @@
 
 // Preserve the SDK's EAPOL delivery to WPA supplicant when this header wins
 // include-path lookup over the application's Wi-Fi hook header.
-#if defined(CONFIG_MACSW_LWIP)
+#if defined(CONFIG_FHOST) || (defined(CONFIG_MACSW_LWIP) && !defined(CONFIG_WL80211))
 #include "lwiphooks.h"
 #endif
 

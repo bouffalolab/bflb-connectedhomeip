@@ -71,7 +71,9 @@ endif
 ifeq ($(CONFIG_WIFI),y)
   CONFIG_WIFI6                             = y
   CONFIG_MACSW_SELECT                       = default
+  CONFIG_WL80211                          ?= y
   ifeq ($(CONFIG_WL80211),y)
+    CONFIG_FHOST                            = n
     CONFIG_BL_WPA_SUPPLICANT               = y
     CONFIG_WL80211_WRAM_MEM_SIZE_LIMIT    ?= 0x10000
   else

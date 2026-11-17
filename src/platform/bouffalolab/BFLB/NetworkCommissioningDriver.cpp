@@ -20,6 +20,7 @@
 #include <lwip/ethip6.h>
 #include <lwip/dhcp6.h>
 #include <lwip/ip4_addr.h>
+#include <lwip/igmp.h>
 #include <lwip/ip6_addr.h>
 #include <lwip/nd6.h>
 #include <lwip/netif.h>
@@ -520,6 +521,21 @@ extern "C" void network_netif_ext_callback(struct netif * nif, netif_nsc_reason_
     const bool isStaNetifAdded = false;
 #endif
     const bool isNetifStatusChanged = (reason & LWIP_NSC_STATUS_CHANGED) && args && !nif->ip6_autoconfig_enabled;
+
+#if defined(CONFIG_WL80211) && LWIP_IGMP
+    if ((isStaNetifAdded || isNetifStatusChanged) && !(nif->flags & NETIF_FLAG_IGMP))
+    {
+        // NETIF_ADDED runs after lwIP's initial IGMP setup, so start it here
+        // when enabling multicast on a netif supplied without the IGMP flag.
+        nif->flags |= NETIF_FLAG_IGMP;
+        const err_t error = igmp_start(nif);
+        if (error != ERR_OK)
+        {
+            nif->flags &= ~NETIF_FLAG_IGMP;
+            ChipLogError(DeviceLayer, "Failed to start IGMP: %d", error);
+        }
+    }
+#endif
 
     if (isStaNetifAdded || isNetifStatusChanged)
     {
