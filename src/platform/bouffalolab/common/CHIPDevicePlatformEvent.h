@@ -18,6 +18,7 @@
 #pragma once
 
 #include <platform/CHIPDeviceEvent.h>
+#include "CHIPDevicePlatformConfig.h"
 #include <system/SystemPacketBuffer.h>
 
 namespace chip {
@@ -45,6 +46,15 @@ enum InternalPlatformSpecificEventTypes
     kPlatformZephyrBleC1WriteEvent,
     kPlatformZephyrBleC2IndDoneEvent,
     kPlatformZephyrBleOutOfBuffersEvent,
+#if CHIP_DEVICE_CONFIG_ENABLE_BOUFFALO_BLE_CENTRAL
+    kPlatformBouffaloBleCentralScanMatch,
+    kPlatformBouffaloBleCentralScanError,
+    kPlatformBouffaloBleCentralConnected,
+    kPlatformBouffaloBleCentralDisconnected,
+    kPlatformBouffaloBleCentralGattReady,
+    kPlatformBouffaloBleCentralIndication,
+    kPlatformBouffaloBleCentralWriteComplete,
+#endif
 };
 
 } // namespace DeviceEventType
@@ -74,6 +84,37 @@ struct BleC2IndDoneEventType
     uint8_t Result;
 };
 
+#if CHIP_DEVICE_CONFIG_ENABLE_BOUFFALO_BLE_CENTRAL
+struct BleCentralScanMatchEventType
+{
+    uint8_t Address[6];
+    uint8_t AddressType;
+};
+
+struct BleCentralScanErrorEventType
+{
+    int32_t Status;
+};
+
+struct BleCentralConnectionEventType
+{
+    struct bt_conn * BtConn;
+    uint8_t HciResult;
+};
+
+struct BleCentralGattReadyEventType
+{
+    uint8_t Status;
+};
+
+struct BleCentralDataEventType
+{
+    struct bt_conn * BtConn;
+    ::chip::System::PacketBuffer * Data;
+    uint8_t Status;
+};
+#endif
+
 /**
  * Represents platform-specific event information for Bouffalo Lab platforms.
  */
@@ -85,6 +126,13 @@ struct ChipDevicePlatformEvent final
         BleCCCWriteEventType BleCCCWriteEvent;
         BleC1WriteEventType BleC1WriteEvent;
         BleC2IndDoneEventType BleC2IndDoneEvent;
+#if CHIP_DEVICE_CONFIG_ENABLE_BOUFFALO_BLE_CENTRAL
+        BleCentralScanMatchEventType BleCentralScanMatchEvent;
+        BleCentralScanErrorEventType BleCentralScanErrorEvent;
+        BleCentralConnectionEventType BleCentralConnectionEvent;
+        BleCentralGattReadyEventType BleCentralGattReadyEvent;
+        BleCentralDataEventType BleCentralDataEvent;
+#endif
     };
 };
 #else

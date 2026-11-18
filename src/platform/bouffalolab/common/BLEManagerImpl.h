@@ -39,7 +39,13 @@ using namespace chip::Ble;
 /**
  * Concrete implementation of the BLEManager singleton object for the Bouffalo Lab platform.
  */
-class BLEManagerImpl final : public BLEManager, private BleLayer, private BlePlatformDelegate, private BleApplicationDelegate
+class BLEManagerImpl final : public BLEManager,
+                             private BleLayer,
+                             private BlePlatformDelegate,
+                             private BleApplicationDelegate
+#if CHIP_DEVICE_CONFIG_ENABLE_BOUFFALO_BLE_CENTRAL
+    , private BleConnectionDelegate
+#endif
 {
     // Allow the BLEManager interface class to delegate method calls to
     // the implementation methods provided by this class.
@@ -78,6 +84,13 @@ private:
 
     void NotifyChipConnectionClosed(BLE_CONNECTION_OBJECT conId);
 
+#if CHIP_DEVICE_CONFIG_ENABLE_BOUFFALO_BLE_CENTRAL
+    // ===== Members that implement the BLE central connection delegate.
+    void NewConnection(BleLayer * bleLayer, void * appState, const SetupDiscriminator & connDiscriminator) override;
+    void NewConnection(BleLayer * bleLayer, void * appState, BLE_CONNECTION_OBJECT connObj) override;
+    CHIP_ERROR CancelConnection() override;
+#endif
+
     // ===== Private members reserved for use by this class only.
 
     enum class Flags : uint8_t
@@ -93,6 +106,76 @@ private:
     };
 
     struct ServiceData;
+
+#if CHIP_DEVICE_CONFIG_ENABLE_BOUFFALO_BLE_CENTRAL
+    enum class CentralState : uint8_t
+    {
+        kIdle,
+        kScanning,
+        kScanMatchPending,
+        kConnecting,
+        kDisconnecting,
+        kDiscoveringService,
+        kDiscoveringCharacteristics,
+        kDiscoveringCcc,
+        kConnected,
+    };
+
+    enum class CentralDiscoveryStage : uint8_t
+    {
+        kService,
+        kCharacteristics,
+        kCcc,
+    };
+
+    CentralState mCentralState = CentralState::kIdle;
+    CentralDiscoveryStage mCentralDiscoveryStage = CentralDiscoveryStage::kService;
+    SetupDiscriminator mCentralDiscriminator;
+    void * mCentralAppState = nullptr;
+    bt_addr_le_t mCentralPeerAddress{};
+    bt_conn * mCentralConnection = nullptr;
+    bt_gatt_discover_params mCentralDiscoverParams{};
+    bt_gatt_subscribe_params mCentralSubscribeParams{};
+    bt_gatt_write_params mCentralWriteParams{};
+    PacketBufferHandle mCentralWriteBuffer;
+    uint16_t mCentralServiceStartHandle = 0;
+    uint16_t mCentralServiceEndHandle = 0;
+    uint16_t mCentralRxValueHandle = 0;
+    uint16_t mCentralTxValueHandle = 0;
+    uint16_t mCentralTxCccHandle = 0;
+    bool mCentralSubscribePending = false;
+    bool mCentralDiagnosticsOnly = false;
+    bool mCentralScanStartPending = false;
+    uint32_t mCentralScanReportCount = 0;
+
+    CHIP_ERROR StartCentralScan();
+    CHIP_ERROR StartCentralConnection();
+    CHIP_ERROR StartCentralServiceDiscovery();
+    CHIP_ERROR StartCentralCharacteristicDiscovery();
+    CHIP_ERROR StartCentralCccDiscovery();
+    void HandleCentralGattDiscoveryComplete(uint8_t status);
+    void HandleCentralGattNotification(const void * data, uint16_t length);
+    void HandleCentralWriteComplete(uint8_t status);
+    void HandleCentralConnectionError(CHIP_ERROR error);
+    static void HandleCentralScanTimeout(System::Layer * systemLayer, void * context);
+    static void StopCentralScanWork(intptr_t arg);
+    void ResetCentralConnection();
+    static void StartCentralScanWork(intptr_t arg);
+    static void StartCentralConnectionWork(intptr_t arg);
+    static void ContinueCentralGattDiscoveryWork(intptr_t arg);
+    static void HandleCentralScanResult(const bt_addr_le_t * address, int8_t rssi, uint8_t advertisingType,
+                                        net_buf_simple * advertisingData);
+    static uint8_t HandleCentralServiceDiscovered(bt_conn * connection, const bt_gatt_attr * attribute,
+                                                   bt_gatt_discover_params * parameters);
+    static uint8_t HandleCentralCharacteristicDiscovered(bt_conn * connection, const bt_gatt_attr * attribute,
+                                                          bt_gatt_discover_params * parameters);
+    static uint8_t HandleCentralCccDiscovered(bt_conn * connection, const bt_gatt_attr * attribute,
+                                              bt_gatt_discover_params * parameters);
+    static uint8_t HandleCentralNotification(bt_conn * connection, bt_gatt_subscribe_params * parameters,
+                                              const void * data, uint16_t length);
+    static void HandleCentralWriteResponse(bt_conn * connection, uint8_t status, bt_gatt_write_params * parameters);
+    static void HandleCentralSubscribeWork(intptr_t arg);
+#endif
 
     BitFlags<Flags> mFlags;
     uint16_t mGAPConns;
@@ -141,6 +224,11 @@ public:
     static ssize_t HandleRXWrite(bt_conn * conn, const bt_gatt_attr * attr, const void * buf, uint16_t len, uint16_t offset,
                                  uint8_t flags);
     static bool HandleTXCCCWrite(bt_conn * conn, const bt_gatt_attr * attr, uint16_t value);
+
+#if CHIP_DEVICE_CONFIG_ENABLE_BOUFFALO_BLE_CENTRAL
+    CHIP_ERROR StartCentralScanForTest();
+    CHIP_ERROR StopCentralScanForTest();
+#endif
 
 #if CHIP_ENABLE_ADDITIONAL_DATA_ADVERTISING
     static ssize_t HandleC3Read(struct bt_conn * conn, const struct bt_gatt_attr * attr, void * buf, uint16_t len, uint16_t offset);

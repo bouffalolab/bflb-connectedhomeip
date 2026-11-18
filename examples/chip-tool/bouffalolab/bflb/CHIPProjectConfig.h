@@ -31,6 +31,9 @@
 #define CHIP_DEVICE_CONFIG_CHIP_TASK_STACK_SIZE (16 * 1024)
 #endif
 
+// Only the chip-tool controller initiates BLE connections to commissionees.
+#define CHIP_DEVICE_CONFIG_ENABLE_BOUFFALO_BLE_CENTRAL 1
+
 // The controller commissions other devices; it never advertises itself.
 #ifndef CHIP_DEVICE_CONFIG_CHIPOBLE_ENABLE_ADVERTISING_AUTOSTART
 #define CHIP_DEVICE_CONFIG_CHIPOBLE_ENABLE_ADVERTISING_AUTOSTART 0

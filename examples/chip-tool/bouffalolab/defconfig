@@ -49,16 +49,16 @@ CONFIG_MBEDTLS_ECDSA_DETERMINISTIC          = y
 CONFIG_RF                                   = y
 CONFIG_BLUETOOTH                            = y
 ifeq ($(CHIP),bl618dg)
-  CONFIG_BTBLECONTROLLER_LIB                = ble1m0s1bredr0
+  CONFIG_BTBLECONTROLLER_LIB                = ble1m10s1bredr0
 else ifeq ($(CHIP),bl616)
-  CONFIG_BTBLECONTROLLER_LIB                = ble1m0s1bredr0
+  CONFIG_BTBLECONTROLLER_LIB                = ble1m10s1bredr0
 else
   CONFIG_BTBLECONTROLLER_LIB                = m2s1
 endif
 CONFIG_BLE_USING_DYNAMIC_RAM                = 1
 CONFIG_BLE_USE_MAC2                         = n
 CONFIG_BT_OAD_SERVER                        = n
-CONFIG_BT_STACK_CLI                         = n
+CONFIG_BT_STACK_CLI                         = y
 
 # WiFi 6 STA; WL80211 is the default, with FHOST retained as an option.
 ifeq ($(CONFIG_WIFI),y)
@@ -73,6 +73,12 @@ ifeq ($(CONFIG_WIFI),y)
   endif
   CONFIG_IPV6                               = y
   CONFIG_DHCPD                              = y
+endif
+
+# BL618DG DK uses the shared combo RF path for Wi-Fi and Bluetooth.
+ifeq ($(CHIP),bl618dg)
+  CONFIG_COEX                               = y
+  CONFIG_COEX_BOARD_TOPOLOGY_COMBO          = y
 endif
 
 ifneq ($(filter y,$(CONFIG_WIFI) $(CONFIG_ETHERNET)),)

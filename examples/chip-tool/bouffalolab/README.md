@@ -36,3 +36,50 @@ controller app too):
 - `scripts/test/bouffalolab/bflbctl.py` — CLI: `list|reset|wait-boot|send|console|flash`.
 - `scripts/test/bouffalolab/boards.yaml.example` — role → iSerial map
   (`lighting` / `controller`).
+
+## BLE stack CLI
+
+The controller image enables the Bouffalo SDK BLE stack shell commands. At the
+`bouffalolab />` prompt, start a passive scan with duplicate filtering disabled
+and print each device:
+
+```
+ble_start_scan 0 0 0x0060 0x0060 0
+```
+
+Stop it with:
+
+```
+ble_stop_scan
+```
+
+Do not run this scan concurrently with `matter ble-scan`. The chip-tool already
+initializes the BLE stack; use the scan commands directly rather than
+reinitializing it with `ble_enable`.
+
+BL618DG also exposes the SDK RF coexistence test commands. To force the shared
+RF path to Bluetooth before scanning, run `ble_coex_rf_set bt`; restore Wi-Fi
+priority with `ble_coex_rf_set wifi`.
+
+For low-level PHY RF-path diagnostics, the BL618DG image also exports:
+
+```
+btble_path_combo
+btble_path_standalone
+```
+
+These call the SDK `cmd_set_btble_combo()` and
+`cmd_set_btble_standalone()` functions respectively and print before/after
+markers. They directly switch the PHY RF path; use only for diagnostics and
+expect active Wi-Fi/BLE operation to be disrupted. They do not replace the
+startup RF initialization.
+
+## Known issue: non-fatal mbedTLS diagnostic
+
+During BL618DG BLE commissioning, the controller logs
+`mbedTLS error: -0xFFFFFFFF` while processing the PAA certificate (after its
+AKID is logged and before Certification Declaration verification). In the
+observed successful run, attestation verification and commissioning continued
+successfully, so this message did not fail commissioning. Its originating
+mbedTLS call and root cause have not yet been identified; investigate this
+separately if it recurs or affects verification.

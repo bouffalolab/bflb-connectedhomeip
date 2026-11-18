@@ -19,6 +19,7 @@
 #include <lib/support/CHIPMem.h>
 #include <lib/support/logging/CHIPLogging.h>
 #include <lib/shell/Engine.h>
+#include <platform/internal/CHIPDeviceLayerInternal.h>
 
 #include <cstdlib>
 #include <cstring>
@@ -48,6 +49,34 @@ CHIP_ERROR PrintTimeStatus(int argc, char * argv[])
     return CHIP_NO_ERROR;
 }
 
+CHIP_ERROR StartBleScanTest(int argc, char * argv[])
+{
+    (void) argv;
+    VerifyOrReturnError(argc == 0, CHIP_ERROR_INVALID_ARGUMENT);
+    CHIP_ERROR err = chip::DeviceLayer::Internal::BLEMgrImpl().StartCentralScanForTest();
+    if (err == CHIP_NO_ERROR)
+    {
+        ChipLogProgress(Ble, "Diagnostic BLE scan requested (20 seconds)");
+    }
+    else
+    {
+        ChipLogError(Ble, "Unable to request diagnostic BLE scan: %" CHIP_ERROR_FORMAT, err.Format());
+    }
+    return err;
+}
+
+CHIP_ERROR StopBleScanTest(int argc, char * argv[])
+{
+    (void) argv;
+    VerifyOrReturnError(argc == 0, CHIP_ERROR_INVALID_ARGUMENT);
+    CHIP_ERROR err = chip::DeviceLayer::Internal::BLEMgrImpl().StopCentralScanForTest();
+    if (err != CHIP_NO_ERROR)
+    {
+        ChipLogError(Ble, "Unable to stop diagnostic BLE scan: %" CHIP_ERROR_FORMAT, err.Format());
+    }
+    return err;
+}
+
 CHIP_ERROR RunChipTool(int argc, char * argv[])
 {
     constexpr int kMaxArguments = 32;
@@ -68,6 +97,8 @@ CHIP_ERROR RunChipTool(int argc, char * argv[])
 chip::Shell::shell_command_t sControllerShellCommands[] = {
     { RunChipTool, "chip-tool", "Run a Matter controller command" },
     { PrintTimeStatus, "time", "Show system time and SNTP synchronization status" },
+    { StartBleScanTest, "ble-scan", "Scan and print BLE advertisements for 20 seconds" },
+    { StopBleScanTest, "ble-scan-stop", "Stop the diagnostic BLE scan" },
 };
 
 } // namespace

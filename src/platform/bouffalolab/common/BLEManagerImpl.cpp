@@ -20,6 +20,7 @@
 #if CHIP_DEVICE_CONFIG_ENABLE_CHIPOBLE
 
 #include <ble/Ble.h>
+#include <ble/CHIPBleServiceData.h>
 #include <lib/support/CHIPMemString.h>
 #include <lib/support/SafeInt.h>
 #include <platform/DeviceInstanceInfoProvider.h>
@@ -37,6 +38,7 @@ extern "C" {
 }
 
 #include <addr.h>
+#include <bluetooth.h>
 #include <hci_driver.h>
 
 #include "BLEManagerImpl.h"
@@ -48,6 +50,50 @@ using namespace ::chip::System;
 namespace chip {
 namespace DeviceLayer {
 namespace Internal {
+
+#if CHIP_DEVICE_CONFIG_ENABLE_BOUFFALO_BLE_CENTRAL
+namespace {
+
+constexpr System::Clock::Timeout kCentralScanTimeout = System::Clock::Seconds16(20);
+
+bt_uuid_16 sMatterBleServiceUuid = BT_UUID_INIT_16(0xFFF6);
+bt_uuid_16 sMatterBleCccUuid = BT_UUID_INIT_16(0x2902);
+bt_uuid_128 sMatterBleRxUuid =
+    BT_UUID_INIT_128(0x11, 0x9D, 0x9F, 0x42, 0x9C, 0x4F, 0x9F, 0x95, 0x59, 0x45, 0x3D, 0x26, 0xF5, 0x2E, 0xEE, 0x18);
+bt_uuid_128 sMatterBleTxUuid =
+    BT_UUID_INIT_128(0x12, 0x9D, 0x9F, 0x42, 0x9C, 0x4F, 0x9F, 0x95, 0x59, 0x45, 0x3D, 0x26, 0xF5, 0x2E, 0xEE, 0x18);
+
+struct MatterAdvertisementMatch
+{
+    const SetupDiscriminator * discriminator;
+    bool matched = false;
+    bool hasMatterServiceData = false;
+    uint16_t discriminatorValue = 0;
+};
+
+bool MatchMatterServiceData(bt_data * data, void * context)
+{
+    auto * match = static_cast<MatterAdvertisementMatch *>(context);
+    if (data->type != BT_DATA_SVC_DATA16 || data->data_len < 2 || data->data[0] != 0xF6 || data->data[1] != 0xFF)
+    {
+        return true;
+    }
+
+    match->hasMatterServiceData = true;
+    if (data->data_len < (2 + sizeof(ChipBLEDeviceIdentificationInfo)))
+    {
+        return true;
+    }
+
+    ChipBLEDeviceIdentificationInfo info;
+    memcpy(&info, data->data + 2, sizeof(info));
+    match->discriminatorValue = info.GetDeviceDiscriminator();
+    match->matched            = match->discriminator->MatchesLongDiscriminator(match->discriminatorValue);
+    return !match->matched;
+}
+
+} // namespace
+#endif
 
 const bt_uuid_128 UUID128_CHIPoBLEChar_RX =
     BT_UUID_INIT_128(0x11, 0x9D, 0x9F, 0x42, 0x9C, 0x4F, 0x9F, 0x95, 0x59, 0x45, 0x3D, 0x26, 0xF5, 0x2E, 0xEE, 0x18);
@@ -135,12 +181,550 @@ CHIP_ERROR BLEManagerImpl::_Init()
     bt_conn_cb_register(&mConnCallbacks);
 
     // Initialize the CHIP BleLayer.
+#if CHIP_DEVICE_CONFIG_ENABLE_BOUFFALO_BLE_CENTRAL
+    ReturnErrorOnFailure(BleLayer::Init(this, this, this, &DeviceLayer::SystemLayer()));
+#else
     ReturnErrorOnFailure(BleLayer::Init(this, this, &DeviceLayer::SystemLayer()));
+#endif
 
     TEMPORARY_RETURN_IGNORED PlatformMgr().ScheduleWork(DriveBLEState, 0);
 
     return CHIP_NO_ERROR;
 }
+
+#if CHIP_DEVICE_CONFIG_ENABLE_BOUFFALO_BLE_CENTRAL
+void BLEManagerImpl::NewConnection(BleLayer * bleLayer, void * appState, const SetupDiscriminator & connDiscriminator)
+{
+    if (bleLayer != this || mCentralState != CentralState::kIdle)
+    {
+        BleConnectionDelegate::OnConnectionError(appState, CHIP_ERROR_INCORRECT_STATE);
+        return;
+    }
+
+    mCentralDiscriminator = connDiscriminator;
+    mCentralAppState      = appState;
+    mCentralDiagnosticsOnly = false;
+    CHIP_ERROR err        = PlatformMgr().ScheduleWork(StartCentralScanWork, 0);
+    if (err != CHIP_NO_ERROR)
+    {
+        HandleCentralConnectionError(err);
+    }
+}
+
+void BLEManagerImpl::NewConnection(BleLayer * bleLayer, void * appState, BLE_CONNECTION_OBJECT connObj)
+{
+    if (bleLayer != this || connObj == BLE_CONNECTION_UNINITIALIZED)
+    {
+        BleConnectionDelegate::OnConnectionError(appState, CHIP_ERROR_INCORRECT_STATE);
+        return;
+    }
+
+    BleConnectionDelegate::OnConnectionComplete(appState, connObj);
+}
+
+CHIP_ERROR BLEManagerImpl::CancelConnection()
+{
+    DeviceLayer::SystemLayer().CancelTimer(HandleCentralScanTimeout, this);
+
+    if (mCentralState == CentralState::kDisconnecting)
+    {
+        mCentralAppState = nullptr;
+        return CHIP_NO_ERROR;
+    }
+
+    if (mCentralState == CentralState::kScanning || mCentralState == CentralState::kScanMatchPending)
+    {
+        const int status = bt_le_scan_stop();
+        if (status != 0)
+        {
+            ChipLogError(Ble, "Failed to stop BLE central scan: %d", status);
+        }
+    }
+
+    if (mCentralConnection != nullptr && mCentralState != CentralState::kIdle)
+    {
+        mCentralState = CentralState::kDisconnecting;
+        const int status = bt_conn_disconnect(mCentralConnection, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+        if (status != 0)
+        {
+            ChipLogError(Ble, "Failed to cancel BLE central connection: %d", status);
+            mCentralAppState = nullptr;
+            ResetCentralConnection();
+            return CHIP_NO_ERROR;
+        }
+        mCentralAppState = nullptr;
+        return CHIP_NO_ERROR;
+    }
+
+    mCentralAppState = nullptr;
+    ResetCentralConnection();
+    return CHIP_NO_ERROR;
+}
+
+CHIP_ERROR BLEManagerImpl::StartCentralScanForTest()
+{
+    VerifyOrReturnError(mCentralState == CentralState::kIdle && !mCentralScanStartPending, CHIP_ERROR_BUSY);
+
+    mCentralDiscriminator   = SetupDiscriminator();
+    mCentralAppState        = nullptr;
+    mCentralDiagnosticsOnly = true;
+    mCentralScanStartPending = true;
+    CHIP_ERROR err = PlatformMgr().ScheduleWork(StartCentralScanWork, 0);
+    if (err != CHIP_NO_ERROR)
+    {
+        mCentralScanStartPending = false;
+        mCentralDiagnosticsOnly  = false;
+    }
+    return err;
+}
+
+CHIP_ERROR BLEManagerImpl::StopCentralScanForTest()
+{
+    VerifyOrReturnError(mCentralDiagnosticsOnly || mCentralScanStartPending, CHIP_ERROR_INCORRECT_STATE);
+    return PlatformMgr().ScheduleWork(StopCentralScanWork, 0);
+}
+
+CHIP_ERROR BLEManagerImpl::StartCentralScan()
+{
+    VerifyOrReturnError(mCentralState == CentralState::kIdle, CHIP_ERROR_INCORRECT_STATE);
+
+    bt_le_scan_param parameters{};
+    parameters.type       = mCentralDiagnosticsOnly ? BT_LE_SCAN_TYPE_PASSIVE : BT_LE_SCAN_TYPE_ACTIVE;
+    parameters.filter_dup = mCentralDiagnosticsOnly ? 0 : BT_LE_SCAN_FILTER_DUPLICATE;
+    parameters.interval  = BT_GAP_SCAN_FAST_INTERVAL;
+    parameters.window    = BT_GAP_SCAN_FAST_WINDOW;
+    mCentralScanReportCount = 0;
+
+    mCentralState = CentralState::kScanning;
+    const int status = bt_le_scan_start(&parameters, HandleCentralScanResult);
+    if (status != 0)
+    {
+        mCentralState = CentralState::kIdle;
+        return CHIP_ERROR_INTERNAL;
+    }
+
+    CHIP_ERROR timerError = DeviceLayer::SystemLayer().StartTimer(kCentralScanTimeout, HandleCentralScanTimeout, this);
+    if (timerError != CHIP_NO_ERROR)
+    {
+        bt_le_scan_stop();
+        mCentralState = CentralState::kIdle;
+        return timerError;
+    }
+
+    ChipLogProgress(Ble, "Started BLE central scan (type %u, filter %u, interval %u, window %u)%s",
+                    parameters.type, parameters.filter_dup, parameters.interval, parameters.window,
+                    mCentralDiagnosticsOnly ? " [diagnostic]" : "");
+    return CHIP_NO_ERROR;
+}
+
+CHIP_ERROR BLEManagerImpl::StartCentralConnection()
+{
+    VerifyOrReturnError(mCentralState == CentralState::kConnecting, CHIP_ERROR_INCORRECT_STATE);
+
+    const bt_le_conn_param parameters = { BT_GAP_INIT_CONN_INT_MIN, BT_GAP_INIT_CONN_INT_MAX, 0, 400 };
+    mCentralConnection = bt_conn_create_le(&mCentralPeerAddress, &parameters);
+    VerifyOrReturnError(mCentralConnection != nullptr, CHIP_ERROR_CONNECTION_ABORTED);
+
+    ChipLogProgress(Ble, "Connecting to Matter BLE commissionee");
+    return CHIP_NO_ERROR;
+}
+
+CHIP_ERROR BLEManagerImpl::StartCentralServiceDiscovery()
+{
+    VerifyOrReturnError(mCentralConnection != nullptr, CHIP_ERROR_INCORRECT_STATE);
+
+    mCentralServiceStartHandle = 0;
+    mCentralServiceEndHandle   = 0;
+    mCentralRxValueHandle      = 0;
+    mCentralTxValueHandle      = 0;
+    mCentralTxCccHandle        = 0;
+    mCentralState              = CentralState::kDiscoveringService;
+    mCentralDiscoverParams     = {};
+    mCentralDiscoverParams.uuid        = &sMatterBleServiceUuid.uuid;
+    mCentralDiscoverParams.func        = HandleCentralServiceDiscovered;
+    mCentralDiscoverParams.start_handle = 1;
+    mCentralDiscoverParams.end_handle   = 0xFFFF;
+    mCentralDiscoverParams.type         = BT_GATT_DISCOVER_PRIMARY;
+
+    const int status = bt_gatt_discover(mCentralConnection, &mCentralDiscoverParams);
+    if (status != 0)
+    {
+        ChipLogError(Ble, "Failed to start Matter GATT service discovery: %d", status);
+    }
+    return status == 0 ? CHIP_NO_ERROR : CHIP_ERROR_INTERNAL;
+}
+
+CHIP_ERROR BLEManagerImpl::StartCentralCharacteristicDiscovery()
+{
+    mCentralState          = CentralState::kDiscoveringCharacteristics;
+    mCentralDiscoverParams = {};
+    mCentralDiscoverParams.func         = HandleCentralCharacteristicDiscovered;
+    mCentralDiscoverParams.start_handle = mCentralServiceStartHandle;
+    mCentralDiscoverParams.end_handle   = mCentralServiceEndHandle;
+    mCentralDiscoverParams.type         = BT_GATT_DISCOVER_CHARACTERISTIC;
+
+    const int status = bt_gatt_discover(mCentralConnection, &mCentralDiscoverParams);
+    return status == 0 ? CHIP_NO_ERROR : CHIP_ERROR_INTERNAL;
+}
+
+CHIP_ERROR BLEManagerImpl::StartCentralCccDiscovery()
+{
+    mCentralState          = CentralState::kDiscoveringCcc;
+    mCentralDiscoverParams = {};
+    mCentralDiscoverParams.uuid         = &sMatterBleCccUuid.uuid;
+    mCentralDiscoverParams.func         = HandleCentralCccDiscovered;
+    mCentralDiscoverParams.start_handle = static_cast<uint16_t>(mCentralTxValueHandle + 1);
+    mCentralDiscoverParams.end_handle   = mCentralServiceEndHandle;
+    mCentralDiscoverParams.type         = BT_GATT_DISCOVER_DESCRIPTOR;
+
+    const int status = bt_gatt_discover(mCentralConnection, &mCentralDiscoverParams);
+    return status == 0 ? CHIP_NO_ERROR : CHIP_ERROR_INTERNAL;
+}
+
+void BLEManagerImpl::HandleCentralGattDiscoveryComplete(uint8_t status)
+{
+    ChipDeviceEvent event{};
+    event.Type                                    = DeviceEventType::kPlatformBouffaloBleCentralGattReady;
+    event.Platform.BleCentralGattReadyEvent.Status = status;
+    PlatformMgr().PostEventOrDie(&event);
+}
+
+void BLEManagerImpl::HandleCentralGattNotification(const void * data, uint16_t length)
+{
+    if (mCentralConnection == nullptr)
+    {
+        return;
+    }
+
+    System::PacketBufferHandle buffer;
+    if (data != nullptr)
+    {
+        buffer = System::PacketBufferHandle::NewWithData(data, length);
+        if (buffer.IsNull())
+        {
+            ChipLogError(Ble, "Failed to allocate BLE central indication buffer");
+            return;
+        }
+    }
+
+    ChipDeviceEvent event{};
+    event.Type                                       = DeviceEventType::kPlatformBouffaloBleCentralIndication;
+    event.Platform.BleCentralDataEvent.BtConn        = bt_conn_ref(mCentralConnection);
+    event.Platform.BleCentralDataEvent.Data          = std::move(buffer).UnsafeRelease();
+    event.Platform.BleCentralDataEvent.Status        = 0;
+    PlatformMgr().PostEventOrDie(&event);
+}
+
+void BLEManagerImpl::HandleCentralWriteComplete(uint8_t status)
+{
+    if (mCentralConnection == nullptr)
+    {
+        mCentralWriteBuffer = nullptr;
+        return;
+    }
+
+    ChipDeviceEvent event{};
+    event.Type                                       = DeviceEventType::kPlatformBouffaloBleCentralWriteComplete;
+    event.Platform.BleCentralDataEvent.BtConn        = bt_conn_ref(mCentralConnection);
+    event.Platform.BleCentralDataEvent.Data          = nullptr;
+    event.Platform.BleCentralDataEvent.Status        = status;
+    PlatformMgr().PostEventOrDie(&event);
+}
+
+void BLEManagerImpl::HandleCentralConnectionError(CHIP_ERROR error)
+{
+    DeviceLayer::SystemLayer().CancelTimer(HandleCentralScanTimeout, this);
+    if (mCentralState == CentralState::kScanning || mCentralState == CentralState::kScanMatchPending)
+    {
+        const int status = bt_le_scan_stop();
+        if (status != 0)
+        {
+            ChipLogError(Ble, "Failed to stop BLE scan while aborting central attempt: %d", status);
+        }
+    }
+
+    void * appState = mCentralAppState;
+    mCentralAppState = nullptr;
+    if (mCentralConnection != nullptr)
+    {
+        mCentralState = CentralState::kDisconnecting;
+        const int status = bt_conn_disconnect(mCentralConnection, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+        if (status != 0)
+        {
+            ChipLogError(Ble, "Failed to disconnect BLE central connection after error: %d", status);
+            ResetCentralConnection();
+        }
+    }
+    else
+    {
+        ResetCentralConnection();
+    }
+    if (appState != nullptr)
+    {
+        BleConnectionDelegate::OnConnectionError(appState, error);
+    }
+}
+
+void BLEManagerImpl::HandleCentralScanTimeout(System::Layer *, void * context)
+{
+    auto * self = static_cast<BLEManagerImpl *>(context);
+    if (self->mCentralState == CentralState::kScanning)
+    {
+        if (self->mCentralDiagnosticsOnly)
+        {
+            ChipLogError(Ble, "Diagnostic BLE scan timed out; received %u advertising reports",
+                         static_cast<unsigned int>(self->mCentralScanReportCount));
+        }
+        else
+        {
+            ChipLogError(Ble, "BLE central scan timed out without finding discriminator %u",
+                         self->mCentralDiscriminator.GetLongValue());
+        }
+        self->HandleCentralConnectionError(CHIP_ERROR_TIMEOUT);
+    }
+}
+
+void BLEManagerImpl::ResetCentralConnection()
+{
+    mCentralState              = CentralState::kIdle;
+    mCentralAppState           = nullptr;
+    mCentralSubscribePending   = false;
+    mCentralDiagnosticsOnly    = false;
+    mCentralScanStartPending   = false;
+    mCentralWriteBuffer = nullptr;
+    if (mCentralConnection != nullptr)
+    {
+        bt_conn_unref(mCentralConnection);
+        mCentralConnection = nullptr;
+    }
+}
+
+void BLEManagerImpl::StartCentralScanWork(intptr_t)
+{
+    auto & manager = BLEMgrImpl();
+    manager.mCentralScanStartPending = false;
+    CHIP_ERROR err = manager.StartCentralScan();
+    if (err != CHIP_NO_ERROR)
+    {
+        manager.HandleCentralConnectionError(err);
+    }
+}
+
+void BLEManagerImpl::StopCentralScanWork(intptr_t)
+{
+    auto & manager = BLEMgrImpl();
+    if (manager.mCentralDiagnosticsOnly)
+    {
+        CHIP_ERROR err = manager.CancelConnection();
+        if (err != CHIP_NO_ERROR)
+        {
+            ChipLogError(Ble, "Failed to stop diagnostic BLE scan: %" CHIP_ERROR_FORMAT, err.Format());
+        }
+        else
+        {
+            ChipLogProgress(Ble, "Diagnostic BLE scan stopped");
+        }
+    }
+}
+
+void BLEManagerImpl::StartCentralConnectionWork(intptr_t)
+{
+    CHIP_ERROR err = BLEMgrImpl().StartCentralConnection();
+    if (err != CHIP_NO_ERROR)
+    {
+        BLEMgrImpl().HandleCentralConnectionError(err);
+    }
+}
+
+void BLEManagerImpl::ContinueCentralGattDiscoveryWork(intptr_t)
+{
+    auto & self = BLEMgrImpl();
+    CHIP_ERROR err;
+    if (self.mCentralState == CentralState::kDiscoveringService)
+    {
+        err = self.StartCentralCharacteristicDiscovery();
+    }
+    else if (self.mCentralState == CentralState::kDiscoveringCharacteristics)
+    {
+        err = self.StartCentralCccDiscovery();
+    }
+    else
+    {
+        return;
+    }
+
+    if (err != CHIP_NO_ERROR)
+    {
+        self.HandleCentralGattDiscoveryComplete(1);
+    }
+}
+
+void BLEManagerImpl::HandleCentralSubscribeWork(intptr_t)
+{
+    auto & self = BLEMgrImpl();
+    if (self.mCentralConnection != nullptr && self.mCentralSubscribePending)
+    {
+        self.mCentralSubscribePending = false;
+        self.HandleSubscribeComplete(self.mCentralConnection, &CHIP_BLE_SVC_ID, &CHIP_BLE_CHAR_2_UUID);
+    }
+}
+
+void BLEManagerImpl::HandleCentralScanResult(const bt_addr_le_t * address, s8_t rssi, u8_t advertisingType,
+                                             net_buf_simple * advertisingData)
+{
+    auto & self = BLEMgrImpl();
+    if (self.mCentralState != CentralState::kScanning || address == nullptr || advertisingData == nullptr)
+    {
+        return;
+    }
+    ++self.mCentralScanReportCount;
+
+    MatterAdvertisementMatch match{ .discriminator = &self.mCentralDiscriminator };
+    bt_data_parse(advertisingData, MatchMatterServiceData, &match);
+    char addressString[BT_ADDR_LE_STR_LEN];
+    bt_addr_le_to_str(address, addressString, sizeof(addressString));
+    if (match.hasMatterServiceData)
+    {
+        ChipLogProgress(Ble, "BLE scan: %s RSSI %d type %u data %u bytes Matter discriminator %u%s", addressString,
+                        rssi, advertisingType, advertisingData->len, match.discriminatorValue,
+                        match.matched ? " (match)" : "");
+    }
+    else
+    {
+        ChipLogProgress(Ble, "BLE scan: %s RSSI %d type %u data %u bytes", addressString, rssi, advertisingType,
+                        advertisingData->len);
+    }
+
+    if (!match.matched)
+    {
+        return;
+    }
+
+    if (self.mCentralDiagnosticsOnly)
+    {
+        return;
+    }
+
+    self.mCentralState = CentralState::kScanMatchPending;
+    const int stopStatus = bt_le_scan_stop();
+    if (stopStatus != 0)
+    {
+        ChipDeviceEvent event{};
+        event.Type = DeviceEventType::kPlatformBouffaloBleCentralScanError;
+        event.Platform.BleCentralScanErrorEvent.Status = stopStatus;
+        PlatformMgr().PostEventOrDie(&event);
+        return;
+    }
+
+    ChipDeviceEvent event{};
+    event.Type                                        = DeviceEventType::kPlatformBouffaloBleCentralScanMatch;
+    memcpy(event.Platform.BleCentralScanMatchEvent.Address, address->a.val, sizeof(address->a.val));
+    event.Platform.BleCentralScanMatchEvent.AddressType = address->type;
+    PlatformMgr().PostEventOrDie(&event);
+}
+
+uint8_t BLEManagerImpl::HandleCentralServiceDiscovered(bt_conn *, const bt_gatt_attr * attribute,
+                                                        bt_gatt_discover_params *)
+{
+    auto & self = BLEMgrImpl();
+    if (attribute == nullptr)
+    {
+        self.HandleCentralGattDiscoveryComplete(1);
+        return BT_GATT_ITER_STOP;
+    }
+
+    const auto * service = static_cast<const bt_gatt_service_val *>(attribute->user_data);
+    if (service == nullptr || bt_uuid_cmp(service->uuid, &sMatterBleServiceUuid.uuid) != 0)
+    {
+        return BT_GATT_ITER_CONTINUE;
+    }
+
+    self.mCentralServiceStartHandle = attribute->handle;
+    self.mCentralServiceEndHandle   = service->end_handle;
+    const CHIP_ERROR err = PlatformMgr().ScheduleWork(ContinueCentralGattDiscoveryWork, 0);
+    if (err != CHIP_NO_ERROR)
+    {
+        self.HandleCentralGattDiscoveryComplete(1);
+    }
+    return BT_GATT_ITER_STOP;
+}
+
+uint8_t BLEManagerImpl::HandleCentralCharacteristicDiscovered(bt_conn *, const bt_gatt_attr * attribute,
+                                                              bt_gatt_discover_params *)
+{
+    auto & self = BLEMgrImpl();
+    if (attribute != nullptr)
+    {
+        const auto * characteristic = static_cast<const bt_gatt_chrc *>(attribute->user_data);
+        if (characteristic != nullptr)
+        {
+            if (bt_uuid_cmp(characteristic->uuid, &sMatterBleRxUuid.uuid) == 0)
+            {
+                self.mCentralRxValueHandle = characteristic->value_handle;
+            }
+            else if (bt_uuid_cmp(characteristic->uuid, &sMatterBleTxUuid.uuid) == 0)
+            {
+                self.mCentralTxValueHandle = characteristic->value_handle;
+            }
+        }
+        return BT_GATT_ITER_CONTINUE;
+    }
+
+    if (self.mCentralRxValueHandle == 0 || self.mCentralTxValueHandle == 0)
+    {
+        self.HandleCentralGattDiscoveryComplete(1);
+        return BT_GATT_ITER_STOP;
+    }
+
+    self.mCentralState = CentralState::kDiscoveringCharacteristics;
+    const CHIP_ERROR err = PlatformMgr().ScheduleWork(ContinueCentralGattDiscoveryWork, 0);
+    if (err != CHIP_NO_ERROR)
+    {
+        self.HandleCentralGattDiscoveryComplete(1);
+    }
+    return BT_GATT_ITER_STOP;
+}
+
+uint8_t BLEManagerImpl::HandleCentralCccDiscovered(bt_conn *, const bt_gatt_attr * attribute,
+                                                   bt_gatt_discover_params *)
+{
+    auto & self = BLEMgrImpl();
+    if (attribute != nullptr)
+    {
+        self.mCentralTxCccHandle = attribute->handle;
+        return BT_GATT_ITER_CONTINUE;
+    }
+
+    if (self.mCentralTxCccHandle == 0)
+    {
+        self.HandleCentralGattDiscoveryComplete(1);
+    }
+    else
+    {
+        self.HandleCentralGattDiscoveryComplete(0);
+    }
+    return BT_GATT_ITER_STOP;
+}
+
+uint8_t BLEManagerImpl::HandleCentralNotification(bt_conn *, bt_gatt_subscribe_params * parameters, const void * data,
+                                                    uint16_t length)
+{
+    if (data == nullptr && parameters != nullptr && parameters->value != 0)
+    {
+        // Bouffalo's BFLB_BLE_PATCH_NOTIFY_WRITE_CCC_RSP reports a successful CCC write
+        // using the same NULL-data callback used by the stack for unsubscribe completion.
+        return BT_GATT_ITER_CONTINUE;
+    }
+
+    BLEMgrImpl().HandleCentralGattNotification(data, length);
+    return BT_GATT_ITER_CONTINUE;
+}
+
+void BLEManagerImpl::HandleCentralWriteResponse(bt_conn *, uint8_t status, bt_gatt_write_params *)
+{
+    BLEMgrImpl().HandleCentralWriteComplete(status);
+}
+#endif // CHIP_DEVICE_CONFIG_ENABLE_BOUFFALO_BLE_CENTRAL
 
 void BLEManagerImpl::_Shutdown()
 {
@@ -607,6 +1191,149 @@ void BLEManagerImpl::_OnPlatformEvent(const ChipDeviceEvent * event)
         err = HandleTXCharComplete(event);
         break;
 
+#if CHIP_DEVICE_CONFIG_ENABLE_BOUFFALO_BLE_CENTRAL
+    case DeviceEventType::kPlatformBouffaloBleCentralScanMatch:
+        if (mCentralState != CentralState::kScanMatchPending)
+        {
+            break;
+        }
+        memcpy(mCentralPeerAddress.a.val, event->Platform.BleCentralScanMatchEvent.Address,
+               sizeof(mCentralPeerAddress.a.val));
+        mCentralPeerAddress.type = event->Platform.BleCentralScanMatchEvent.AddressType;
+        DeviceLayer::SystemLayer().CancelTimer(HandleCentralScanTimeout, this);
+        mCentralState = CentralState::kConnecting;
+        err = StartCentralConnection();
+        if (err != CHIP_NO_ERROR)
+        {
+            HandleCentralConnectionError(err);
+        }
+        break;
+
+    case DeviceEventType::kPlatformBouffaloBleCentralScanError:
+        if (mCentralState == CentralState::kScanMatchPending)
+        {
+            ChipLogError(Ble, "Failed to stop BLE scan after Matter advertisement match: %d",
+                         static_cast<int>(event->Platform.BleCentralScanErrorEvent.Status));
+            mCentralState = CentralState::kScanning;
+            HandleCentralConnectionError(CHIP_ERROR_INTERNAL);
+        }
+        break;
+
+    case DeviceEventType::kPlatformBouffaloBleCentralConnected: {
+        const auto & connectionEvent = event->Platform.BleCentralConnectionEvent;
+        bt_conn * connection         = connectionEvent.BtConn;
+        if (connectionEvent.HciResult != BT_HCI_ERR_SUCCESS)
+        {
+            bt_conn_unref(connection);
+            HandleCentralConnectionError(CHIP_ERROR_CONNECTION_ABORTED);
+            break;
+        }
+
+        ++mGAPConns;
+        bt_conn_unref(connection);
+        ChipLogProgress(Ble, "BLE central connection established");
+        err = StartCentralServiceDiscovery();
+        if (err != CHIP_NO_ERROR)
+        {
+            HandleCentralConnectionError(err);
+        }
+        break;
+    }
+
+    case DeviceEventType::kPlatformBouffaloBleCentralDisconnected: {
+        const auto & connectionEvent = event->Platform.BleCentralConnectionEvent;
+        bt_conn * connection         = connectionEvent.BtConn;
+        const bool isCentralConnection = mCentralConnection == connection;
+        const bool connectionReady   = mCentralState == CentralState::kConnected;
+        const bool disconnectPending = mCentralState == CentralState::kDisconnecting;
+        if (mGAPConns > 0)
+        {
+            --mGAPConns;
+        }
+
+        if (connectionReady)
+        {
+            mCentralState = CentralState::kDisconnecting;
+            HandleConnectionError(connection, BLE_ERROR_REMOTE_DEVICE_DISCONNECTED);
+        }
+        else if (!disconnectPending)
+        {
+            void * appState = mCentralAppState;
+            mCentralAppState = nullptr;
+            mCentralState = CentralState::kDisconnecting;
+            if (appState != nullptr)
+            {
+                BleConnectionDelegate::OnConnectionError(appState, CHIP_ERROR_CONNECTION_ABORTED);
+            }
+        }
+
+        bt_conn_unref(connection);
+        if (isCentralConnection)
+        {
+            // The Bouffalo stack has already consumed the connection's original reference by the time
+            // its disconnection callback is processed. The event reference above is the final live one.
+            mCentralConnection = nullptr;
+        }
+        ResetCentralConnection();
+        break;
+    }
+
+    case DeviceEventType::kPlatformBouffaloBleCentralGattReady:
+        if (event->Platform.BleCentralGattReadyEvent.Status != 0 || mCentralConnection == nullptr)
+        {
+            ChipLogError(Ble, "Matter GATT service discovery failed: status %u",
+                         event->Platform.BleCentralGattReadyEvent.Status);
+            HandleCentralConnectionError(CHIP_ERROR_NOT_FOUND);
+            break;
+        }
+
+        mCentralState = CentralState::kConnected;
+        ChipLogProgress(Ble, "Matter BLE GATT service discovered; starting PASE");
+        BleConnectionDelegate::OnConnectionComplete(mCentralAppState, mCentralConnection);
+        mCentralAppState = nullptr;
+        break;
+
+    case DeviceEventType::kPlatformBouffaloBleCentralIndication: {
+        const auto & dataEvent = event->Platform.BleCentralDataEvent;
+        bt_conn * connection  = dataEvent.BtConn;
+        if (dataEvent.Data == nullptr)
+        {
+            HandleUnsubscribeComplete(connection, &CHIP_BLE_SVC_ID, &CHIP_BLE_CHAR_2_UUID);
+        }
+        else
+        {
+            if (mCentralSubscribePending)
+            {
+                mCentralSubscribePending = false;
+                HandleSubscribeComplete(connection, &CHIP_BLE_SVC_ID, &CHIP_BLE_CHAR_2_UUID);
+            }
+            HandleIndicationReceived(connection, &CHIP_BLE_SVC_ID, &CHIP_BLE_CHAR_2_UUID,
+                                     PacketBufferHandle::Adopt(dataEvent.Data));
+        }
+        if (connection != nullptr)
+        {
+            bt_conn_unref(connection);
+        }
+        break;
+    }
+
+    case DeviceEventType::kPlatformBouffaloBleCentralWriteComplete: {
+        const auto & dataEvent = event->Platform.BleCentralDataEvent;
+        bt_conn * connection  = dataEvent.BtConn;
+        mCentralWriteBuffer = nullptr;
+        if (dataEvent.Status == 0)
+        {
+            HandleWriteConfirmation(connection, &CHIP_BLE_SVC_ID, &CHIP_BLE_CHAR_1_UUID);
+        }
+        else
+        {
+            HandleConnectionError(connection, BLE_ERROR_GATT_WRITE_FAILED);
+        }
+        bt_conn_unref(connection);
+        break;
+    }
+#endif
+
     default:
         break;
     }
@@ -638,15 +1365,46 @@ uint16_t BLEManagerImpl::GetMTU(BLE_CONNECTION_OBJECT conId) const
 CHIP_ERROR BLEManagerImpl::SubscribeCharacteristic(BLE_CONNECTION_OBJECT conId, const ChipBleUUID * svcId,
                                                    const ChipBleUUID * charId)
 {
+#if CHIP_DEVICE_CONFIG_ENABLE_BOUFFALO_BLE_CENTRAL
+    VerifyOrReturnError(mCentralState == CentralState::kConnected && conId == mCentralConnection, CHIP_ERROR_INCORRECT_STATE);
+    VerifyOrReturnError(Ble::UUIDsMatch(svcId, &CHIP_BLE_SVC_ID) && Ble::UUIDsMatch(charId, &CHIP_BLE_CHAR_2_UUID),
+                        CHIP_ERROR_INVALID_ARGUMENT);
+    VerifyOrReturnError(mCentralTxValueHandle != 0 && mCentralTxCccHandle != 0, CHIP_ERROR_INCORRECT_STATE);
+
+    mCentralSubscribeParams            = {};
+    mCentralSubscribeParams.notify     = HandleCentralNotification;
+    mCentralSubscribeParams.value_handle = mCentralTxValueHandle;
+    mCentralSubscribeParams.ccc_handle   = mCentralTxCccHandle;
+    mCentralSubscribeParams.value        = BT_GATT_CCC_INDICATE;
+
+    const int status = bt_gatt_subscribe(mCentralConnection, &mCentralSubscribeParams);
+    VerifyOrReturnError(status == 0, CHIP_ERROR_INTERNAL);
+
+    // The SDK subscribe API has no completion callback for the CCC write. Queue
+    // the Matter completion notification after this stack call has returned;
+    // indications themselves are still delivered only through the subscription.
+    mCentralSubscribePending = true;
+    ReturnErrorOnFailure(PlatformMgr().ScheduleWork(HandleCentralSubscribeWork, 0));
+    return CHIP_NO_ERROR;
+#else
     ChipLogError(DeviceLayer, "%s: NOT IMPLEMENTED", __PRETTY_FUNCTION__);
     return CHIP_ERROR_NOT_IMPLEMENTED;
+#endif
 }
 
 CHIP_ERROR BLEManagerImpl::UnsubscribeCharacteristic(BLE_CONNECTION_OBJECT conId, const ChipBleUUID * svcId,
                                                      const ChipBleUUID * charId)
 {
+#if CHIP_DEVICE_CONFIG_ENABLE_BOUFFALO_BLE_CENTRAL
+    VerifyOrReturnError(mCentralConnection != nullptr && conId == mCentralConnection, CHIP_ERROR_INCORRECT_STATE);
+    VerifyOrReturnError(Ble::UUIDsMatch(svcId, &CHIP_BLE_SVC_ID) && Ble::UUIDsMatch(charId, &CHIP_BLE_CHAR_2_UUID),
+                        CHIP_ERROR_INVALID_ARGUMENT);
+    const int status = bt_gatt_unsubscribe(mCentralConnection, &mCentralSubscribeParams);
+    return status == 0 ? CHIP_NO_ERROR : CHIP_ERROR_INTERNAL;
+#else
     ChipLogError(DeviceLayer, "%s: NOT IMPLEMENTED", __PRETTY_FUNCTION__);
     return CHIP_ERROR_NOT_IMPLEMENTED;
+#endif
 }
 
 CHIP_ERROR BLEManagerImpl::SendIndication(BLE_CONNECTION_OBJECT conId, const ChipBleUUID * svcId, const ChipBleUUID * charId,
@@ -686,8 +1444,31 @@ exit:
 CHIP_ERROR BLEManagerImpl::SendWriteRequest(BLE_CONNECTION_OBJECT conId, const ChipBleUUID * svcId, const ChipBleUUID * charId,
                                             PacketBufferHandle pBuf)
 {
+#if CHIP_DEVICE_CONFIG_ENABLE_BOUFFALO_BLE_CENTRAL
+    VerifyOrReturnError(mCentralConnection != nullptr && conId == mCentralConnection, CHIP_ERROR_INCORRECT_STATE);
+    VerifyOrReturnError(Ble::UUIDsMatch(svcId, &CHIP_BLE_SVC_ID) && Ble::UUIDsMatch(charId, &CHIP_BLE_CHAR_1_UUID),
+                        CHIP_ERROR_INVALID_ARGUMENT);
+    VerifyOrReturnError(mCentralRxValueHandle != 0 && !pBuf.IsNull() && mCentralWriteBuffer.IsNull(), CHIP_ERROR_INCORRECT_STATE);
+    VerifyOrReturnError(CanCastTo<uint16_t>(pBuf->DataLength()), CHIP_ERROR_MESSAGE_TOO_LONG);
+
+    mCentralWriteBuffer = std::move(pBuf);
+    mCentralWriteParams = {};
+    mCentralWriteParams.func   = HandleCentralWriteResponse;
+    mCentralWriteParams.handle = mCentralRxValueHandle;
+    mCentralWriteParams.data   = mCentralWriteBuffer->Start();
+    mCentralWriteParams.length = static_cast<uint16_t>(mCentralWriteBuffer->DataLength());
+
+    const int status = bt_gatt_write(mCentralConnection, &mCentralWriteParams);
+    if (status != 0)
+    {
+        mCentralWriteBuffer = nullptr;
+        return CHIP_ERROR_INTERNAL;
+    }
+    return CHIP_NO_ERROR;
+#else
     ChipLogError(DeviceLayer, "%s: NOT IMPLEMENTED", __PRETTY_FUNCTION__);
     return CHIP_ERROR_NOT_IMPLEMENTED;
+#endif
 }
 
 void BLEManagerImpl::NotifyChipConnectionClosed(BLE_CONNECTION_OBJECT conId)
@@ -790,6 +1571,18 @@ void BLEManagerImpl::HandleConnect(struct bt_conn * conId, uint8_t err)
 
     PlatformMgr().LockChipStack();
 
+#if CHIP_DEVICE_CONFIG_ENABLE_BOUFFALO_BLE_CENTRAL
+    if (sInstance.mCentralState == CentralState::kConnecting && sInstance.mCentralConnection == conId)
+    {
+        event.Type                                             = DeviceEventType::kPlatformBouffaloBleCentralConnected;
+        event.Platform.BleCentralConnectionEvent.BtConn       = bt_conn_ref(conId);
+        event.Platform.BleCentralConnectionEvent.HciResult    = err;
+        PlatformMgr().PostEventOrDie(&event);
+        PlatformMgr().UnlockChipStack();
+        return;
+    }
+#endif
+
     // Don't handle BLE connecting events when it is not related to CHIPoBLE
     VerifyOrExit(sInstance.mFlags.Has(Flags::kChipoBleGattServiceRegister), );
 
@@ -808,6 +1601,18 @@ void BLEManagerImpl::HandleDisconnect(struct bt_conn * conId, uint8_t reason)
     ChipDeviceEvent event;
 
     PlatformMgr().LockChipStack();
+
+#if CHIP_DEVICE_CONFIG_ENABLE_BOUFFALO_BLE_CENTRAL
+    if (sInstance.mCentralState != CentralState::kIdle && sInstance.mCentralConnection == conId)
+    {
+        event.Type                                          = DeviceEventType::kPlatformBouffaloBleCentralDisconnected;
+        event.Platform.BleCentralConnectionEvent.BtConn    = bt_conn_ref(conId);
+        event.Platform.BleCentralConnectionEvent.HciResult = reason;
+        PlatformMgr().PostEventOrDie(&event);
+        PlatformMgr().UnlockChipStack();
+        return;
+    }
+#endif
 
     // Don't handle BLE disconnecting events when it is not related to CHIPoBLE
     VerifyOrExit(sInstance.mFlags.Has(Flags::kChipoBleGattServiceRegister), );
