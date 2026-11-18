@@ -137,6 +137,7 @@ endforeach()
 # Matter Flags
 # =============================================================================
 
+matter_add_flags(-DCONFIG_BUILD_FOR_HOST_UNIT_TEST=1)
 matter_add_flags(-DCONFIG_ARCH_RISCV)
 matter_add_flags(-Wno-conversion)
 matter_add_flags(-Wno-maybe-uninitialized)
