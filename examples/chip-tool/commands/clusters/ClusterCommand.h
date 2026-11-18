@@ -22,6 +22,7 @@
 #include "ModelCommand.h"
 #include <app/tests/suites/commands/interaction_model/InteractionModel.h>
 #include <lib/core/ClusterEnums.h>
+#include <platform/CHIPDeviceLayer.h>
 
 class ClusterCommand : public InteractionModelCommands, public ModelCommand, public chip::app::CommandSender::Callback
 {
@@ -42,6 +43,16 @@ public:
     }
 
     ~ClusterCommand() {}
+
+    CHIP_ERROR RunCommand() override
+    {
+        // Keep completed senders alive until the next Matter-queue command
+        // starts. OnDone runs inside the response dispatch; releasing the
+        // exchange holder there can invalidate the exchange before its ACK is
+        // sent and the message handler has finished closing it.
+        InteractionModelCommands::Shutdown();
+        return ModelCommand::RunCommand();
+    }
 
     CHIP_ERROR SendCommand(chip::DeviceProxy * device, std::vector<chip::EndpointId> endpointIds) override
     {
@@ -176,12 +187,6 @@ public:
 
     virtual void OnDone(chip::app::CommandSender * client) override
     {
-        if (mCommandSender.size())
-        {
-            mCommandSender.front().reset();
-            mCommandSender.erase(mCommandSender.begin());
-        }
-
         // If the command is repeated N times, wait for all the responses to comes in
         // before exiting.
         bool shouldStop = true;
@@ -195,7 +200,13 @@ public:
 
         if (shouldStop)
         {
-            SetCommandExitStatus(mError);
+            CHIP_ERROR err = chip::DeviceLayer::SystemLayer().StartTimer(chip::System::Clock::Milliseconds32(10),
+                                                                          CompleteAfterResponse, this);
+            if (err != CHIP_NO_ERROR)
+            {
+                ChipLogError(chipTool, "Failed to defer command completion: %" CHIP_ERROR_FORMAT, err.Format());
+                SetCommandExitStatus(err);
+            }
         }
     }
 
@@ -261,6 +272,14 @@ protected:
     }
 
 private:
+    static void CompleteAfterResponse(chip::System::Layer * systemLayer, void * context)
+    {
+        (void) systemLayer;
+        auto * command = reinterpret_cast<ClusterCommand *>(context);
+        VerifyOrReturn(command != nullptr);
+        command->SetCommandExitStatus(command->mError);
+    }
+
     chip::ClusterId mClusterId;
     chip::CommandId mCommandId;
     // The scoped node ID to which RegisterClient and UnregisterClient command will be sent.  Not set for other commands.

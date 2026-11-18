@@ -17,9 +17,8 @@ controller app too):
    is overridden by the example Makefile, which defaults to the in-tree
    v2.3.27 SDK that has no BL618DG support):
    ```
-   cd examples/lighting-app/bouffalolab
-   make CHIP=bl618dg BOARD=bl618dgdk CPU_ID=ap CONFIG_WIFI=y CONFIG_MFD=y \
-        BUILD_DIR=build-bl618dg \
+   make -C examples/lighting-app/bouffalolab CHIP=bl618dg BOARD=bl618dgdk \
+        CPU_ID=ap CONFIG_WIFI=y CONFIG_MFD=y \
         BL_SDK_BASE=/home/weiyin/workspace/gerrit/legacy/bouffalo_sdk
    ```
 3. **Never pass `cmake_definition+=...` on the command line** — a command-line
@@ -73,6 +72,25 @@ These call the SDK `cmd_set_btble_combo()` and
 markers. They directly switch the PHY RF path; use only for diagnostics and
 expect active Wi-Fi/BLE operation to be disrupted. They do not replace the
 startup RF initialization.
+
+## Lighting cluster commands
+
+The controller registers the generated OnOff and LevelControl command sets for
+the BL616 lighting app. At the `bouffalolab />` prompt, run them through the
+`matter` shell command (replace node and endpoint IDs with the commissioned
+lighting device's values):
+
+```
+matter chip-tool onoff on <node-id> <endpoint-id>
+matter chip-tool onoff off <node-id> <endpoint-id>
+matter chip-tool onoff toggle <node-id> <endpoint-id>
+matter chip-tool levelcontrol move-to-level <level-0-254> <transition-time> <options-mask> <options-override> <node-id> <endpoint-id>
+```
+
+The full generated OnOff and LevelControl command sets are registered. The
+controller intentionally registers only these cluster commands—not the
+generated attribute read/write/event commands—to keep the embedded image within
+its flash partition.
 
 ## Known issue: non-fatal mbedTLS diagnostic
 

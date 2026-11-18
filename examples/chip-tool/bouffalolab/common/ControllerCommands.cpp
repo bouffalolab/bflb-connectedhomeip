@@ -20,6 +20,7 @@
 #include <lib/support/logging/CHIPLogging.h>
 #include <lib/shell/Engine.h>
 #include <platform/internal/CHIPDeviceLayerInternal.h>
+#include <zap-generated/cluster/Commands.h>
 
 #include <cstdlib>
 #include <cstring>
@@ -29,6 +30,32 @@ namespace {
 
 Commands sChipToolCommands;
 ExampleCredentialIssuerCommands sCredentialIssuerCommands;
+
+void RegisterLightingClusterCommands()
+{
+    commands_list onOffCommands = {
+        make_unique<OnOffOff>(&sCredentialIssuerCommands),
+        make_unique<OnOffOn>(&sCredentialIssuerCommands),
+        make_unique<OnOffToggle>(&sCredentialIssuerCommands),
+        make_unique<OnOffOffWithEffect>(&sCredentialIssuerCommands),
+        make_unique<OnOffOnWithRecallGlobalScene>(&sCredentialIssuerCommands),
+        make_unique<OnOffOnWithTimedOff>(&sCredentialIssuerCommands),
+    };
+    sChipToolCommands.RegisterCluster("OnOff", onOffCommands);
+
+    commands_list levelControlCommands = {
+        make_unique<LevelControlMoveToLevel>(&sCredentialIssuerCommands),
+        make_unique<LevelControlMove>(&sCredentialIssuerCommands),
+        make_unique<LevelControlStep>(&sCredentialIssuerCommands),
+        make_unique<LevelControlStop>(&sCredentialIssuerCommands),
+        make_unique<LevelControlMoveToLevelWithOnOff>(&sCredentialIssuerCommands),
+        make_unique<LevelControlMoveWithOnOff>(&sCredentialIssuerCommands),
+        make_unique<LevelControlStepWithOnOff>(&sCredentialIssuerCommands),
+        make_unique<LevelControlStopWithOnOff>(&sCredentialIssuerCommands),
+        make_unique<LevelControlMoveToClosestFrequency>(&sCredentialIssuerCommands),
+    };
+    sChipToolCommands.RegisterCluster("LevelControl", levelControlCommands);
+}
 
 CHIP_ERROR PrintTimeStatus(int argc, char * argv[])
 {
@@ -108,4 +135,5 @@ void ControllerCommands::Init()
     chip::Shell::Engine::Root().RegisterCommands(sControllerShellCommands, MATTER_ARRAY_SIZE(sControllerShellCommands));
     registerCommandsPairing(sChipToolCommands, &sCredentialIssuerCommands);
     registerCommandsSessionManagement(sChipToolCommands, &sCredentialIssuerCommands);
+    RegisterLightingClusterCommands();
 }

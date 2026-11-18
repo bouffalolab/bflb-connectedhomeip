@@ -323,14 +323,26 @@ target_sources(app PRIVATE
   ${EXAMPLES_PLAT_DIR}/common/route_hook/bflb_route_table.c
 
   # chip-tool IP commissioning command subset
+  ${CHIP_TOOL_DIR}/commands/clusters/ModelCommand.cpp
   ${CHIP_TOOL_DIR}/commands/common/CHIPCommand.cpp
   ${CHIP_TOOL_DIR}/commands/common/ControllerDataModelProvider.cpp
   ${CHIP_TOOL_DIR}/commands/common/Command.cpp
   ${CHIP_TOOL_DIR}/commands/common/Commands.cpp
+  ${CHIP_TOOL_DIR}/commands/common/RemoteDataModelLogger.cpp
   ${CHIP_TOOL_DIR}/commands/pairing/OpenCommissioningWindowCommand.cpp
   ${CHIP_TOOL_DIR}/commands/pairing/PairingCommand.cpp
   ${CHIP_TOOL_DIR}/commands/pairing/ToTLVCert.cpp
   ${CHIP_TOOL_DIR}/commands/session-management/CloseSessionCommand.cpp
+
+  # Generated cluster commands use the shared interaction-model command
+  # helpers, which are also used by chip-tool's interaction-model tests.
+  ${CHIP_ROOT}/src/app/tests/suites/commands/interaction_model/InteractionModel.cpp
+  ${CHIP_ROOT}/src/lib/support/jsontlv/TlvJson.cpp
+  ${CHIP_ROOT}/src/lib/support/jsontlv/TlvToJson.cpp
+  ${CHIP_ROOT}/zzz_generated/chip-tool/zap-generated/cluster/logging/DataModelLogger.cpp
+  ${CHIP_ROOT}/zzz_generated/chip-tool/zap-generated/cluster/logging/EntryToText.cpp
+  ${EXAMPLE_DIR}/common/ControllerClusterSupport.cpp
+  ${EXAMPLE_DIR}/common/ControllerTestUtils.cpp
 
   # CustomArgument is part of the shared command parser. Keep its JsonCpp
   # implementation in this embedded target instead of linking desktop libs.
