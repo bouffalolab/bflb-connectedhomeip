@@ -42,16 +42,8 @@
 namespace chip {
 namespace DeviceLayer {
 
-enum
-{
-    kWiFiOnInitDone = DeviceEventType::kRange_PublicPlatformSpecific,
-    kWiFiOnScanDone,
-    kWiFiOnConnecting,
-    kWiFiOnConnected,
-    kGotIpAddress,
-    kGotIpv6Address,
-    kWiFiOnDisconnected,
-};
+// Platform-public events (the Wi-Fi commissioning events and the reboot
+// request) are declared in CHIPDevicePlatformEvent.h.
 
 class ConnectivityManagerImpl final : public ConnectivityManager,
                                       public Internal::GenericConnectivityManagerImpl<ConnectivityManagerImpl>,

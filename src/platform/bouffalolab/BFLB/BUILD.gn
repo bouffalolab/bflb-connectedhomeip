@@ -94,7 +94,6 @@ static_library("BFLB") {
       "ConfigurationManagerImpl.cpp",
       "ConnectivityManagerImpl.cpp",
       "NetworkCommissioningDriver.cpp",
-      "wifi_mgmr_portable.c",
     ]
 
     deps += [ "${chip_root}/src/lib/dnssd:platform_header" ]

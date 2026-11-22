@@ -1,5 +1,5 @@
-#ifndef __WIFI_MGMR_POARABLE_H__
-#define __WIFI_MGMR_POARABLE_H__
+#ifndef __WIFI_MGMR_PORTABLE_H__
+#define __WIFI_MGMR_PORTABLE_H__
 
 #ifdef __cplusplus
 extern "C" {
@@ -7,12 +7,15 @@ extern "C" {
 
 #include <async_event.h>
 
-int wifi_start_scan(const uint8_t * ssid, uint32_t length);
-void network_netif_ext_callback(struct netif * netif, netif_nsc_reason_t reason, const netif_ext_callback_args_t * args);
-void wifi_event_handler(async_input_event_t ev, void * priv);
-void wifi_start_firmware_task(void);
-
+// STA netif accessor. Defined by the Matter platform Wi-Fi commissioning
+// driver (NetworkCommissioningDriver.cpp, merged wifi_mgmr_portable.c glue);
+// shared with the SDK Matter examples' Wi-Fi backbone (matter_wifi.c), route hooks
+// and the platform diagnostics/configuration managers.
 struct netif * deviceInterface_getNetif(void);
+
+// SDK-async-event -> ChipDeviceEvent adapter, defined and registered by the
+// Matter platform itself (NetworkCommissioningDriver.cpp, BflbWiFiDriver::Init).
+void wifi_event_handler(async_input_event_t ev, void * priv);
 
 #ifdef __cplusplus
 }

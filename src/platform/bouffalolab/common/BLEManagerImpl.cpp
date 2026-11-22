@@ -164,13 +164,10 @@ CHIP_ERROR BLEManagerImpl::_Init()
 
     memset(mSubscribedConns, 0, sizeof(mSubscribedConns));
 
-#if CHIP_DEVICE_LAYER_TARGET_BL702L || CHIP_DEVICE_LAYER_TARGET_BFLB
-    btble_controller_init(configMAX_PRIORITIES - 1);
-#else
-    ble_controller_init(configMAX_PRIORITIES - 1);
-#endif
-    hci_driver_init();
-    bt_enable(NULL);
+    // The BLE controller/host stack is brought up by the SDK example
+    // backbone (btble_controller_init + hci_driver_init + bt_enable, as in
+    // the SDK BLE examples). Only the Matter identity and CHIPoBLE setup
+    // remain here.
 
     ReturnErrorOnFailure(InitRandomStaticAddress());
 
@@ -384,7 +381,7 @@ CHIP_ERROR BLEManagerImpl::StartCentralCccDiscovery()
 void BLEManagerImpl::HandleCentralGattDiscoveryComplete(uint8_t status)
 {
     ChipDeviceEvent event{};
-    event.Type                                    = DeviceEventType::kPlatformBouffaloBleCentralGattReady;
+    event.Type                                    = DeviceEventType::kPlatformBflbBleCentralGattReady;
     event.Platform.BleCentralGattReadyEvent.Status = status;
     PlatformMgr().PostEventOrDie(&event);
 }
@@ -408,7 +405,7 @@ void BLEManagerImpl::HandleCentralGattNotification(const void * data, uint16_t l
     }
 
     ChipDeviceEvent event{};
-    event.Type                                       = DeviceEventType::kPlatformBouffaloBleCentralIndication;
+    event.Type                                       = DeviceEventType::kPlatformBflbBleCentralIndication;
     event.Platform.BleCentralDataEvent.BtConn        = bt_conn_ref(mCentralConnection);
     event.Platform.BleCentralDataEvent.Data          = std::move(buffer).UnsafeRelease();
     event.Platform.BleCentralDataEvent.Status        = 0;
@@ -424,7 +421,7 @@ void BLEManagerImpl::HandleCentralWriteComplete(uint8_t status)
     }
 
     ChipDeviceEvent event{};
-    event.Type                                       = DeviceEventType::kPlatformBouffaloBleCentralWriteComplete;
+    event.Type                                       = DeviceEventType::kPlatformBflbBleCentralWriteComplete;
     event.Platform.BleCentralDataEvent.BtConn        = bt_conn_ref(mCentralConnection);
     event.Platform.BleCentralDataEvent.Data          = nullptr;
     event.Platform.BleCentralDataEvent.Status        = status;
@@ -610,14 +607,14 @@ void BLEManagerImpl::HandleCentralScanResult(const bt_addr_le_t * address, s8_t 
     if (stopStatus != 0)
     {
         ChipDeviceEvent event{};
-        event.Type = DeviceEventType::kPlatformBouffaloBleCentralScanError;
+        event.Type = DeviceEventType::kPlatformBflbBleCentralScanError;
         event.Platform.BleCentralScanErrorEvent.Status = stopStatus;
         PlatformMgr().PostEventOrDie(&event);
         return;
     }
 
     ChipDeviceEvent event{};
-    event.Type                                        = DeviceEventType::kPlatformBouffaloBleCentralScanMatch;
+    event.Type                                        = DeviceEventType::kPlatformBflbBleCentralScanMatch;
     memcpy(event.Platform.BleCentralScanMatchEvent.Address, address->a.val, sizeof(address->a.val));
     event.Platform.BleCentralScanMatchEvent.AddressType = address->type;
     PlatformMgr().PostEventOrDie(&event);
@@ -1045,15 +1042,9 @@ exit:
     ReturnErrorOnFailure(PlatformMgr().PostEvent(&disconnectEvent));
     if (mFlags.Has(Flags::kChipoBleShutDown))
     {
-        int ret = bt_disable();
-        if (ret)
-        {
-            ChipLogError(DeviceLayer, "CHIPoBLE Shutdown faild =%d", ret);
-        }
-        else
-        {
-            mFlags.Clear(Flags::kChipoBleShutDown);
-        }
+        // The BLE host/controller lifecycle is owned by the application
+        // backbone; Matter only clears its own state here.
+        mFlags.Clear(Flags::kChipoBleShutDown);
         return CHIP_NO_ERROR;
     }
     // Force a reconfiguration of advertising in case we switched to non-connectable mode when
@@ -1171,28 +1162,28 @@ void BLEManagerImpl::_OnPlatformEvent(const ChipDeviceEvent * event)
 
     switch (event->Type)
     {
-    case DeviceEventType::kPlatformZephyrBleConnected:
+    case DeviceEventType::kPlatformBflbBleConnected:
         err = HandleGAPConnect(event);
         break;
 
-    case DeviceEventType::kPlatformZephyrBleDisconnected:
+    case DeviceEventType::kPlatformBflbBleDisconnected:
         err = HandleGAPDisconnect(event);
         break;
 
-    case DeviceEventType::kPlatformZephyrBleCCCWrite:
+    case DeviceEventType::kPlatformBflbBleCCCWrite:
         err = HandleTXCharCCCDWrite(event);
         break;
 
-    case DeviceEventType::kPlatformZephyrBleC1WriteEvent:
+    case DeviceEventType::kPlatformBflbBleC1WriteEvent:
         err = HandleRXCharWrite(event);
         break;
 
-    case DeviceEventType::kPlatformZephyrBleC2IndDoneEvent:
+    case DeviceEventType::kPlatformBflbBleC2IndDoneEvent:
         err = HandleTXCharComplete(event);
         break;
 
 #if CHIP_DEVICE_CONFIG_ENABLE_BOUFFALO_BLE_CENTRAL
-    case DeviceEventType::kPlatformBouffaloBleCentralScanMatch:
+    case DeviceEventType::kPlatformBflbBleCentralScanMatch:
         if (mCentralState != CentralState::kScanMatchPending)
         {
             break;
@@ -1209,7 +1200,7 @@ void BLEManagerImpl::_OnPlatformEvent(const ChipDeviceEvent * event)
         }
         break;
 
-    case DeviceEventType::kPlatformBouffaloBleCentralScanError:
+    case DeviceEventType::kPlatformBflbBleCentralScanError:
         if (mCentralState == CentralState::kScanMatchPending)
         {
             ChipLogError(Ble, "Failed to stop BLE scan after Matter advertisement match: %d",
@@ -1219,7 +1210,7 @@ void BLEManagerImpl::_OnPlatformEvent(const ChipDeviceEvent * event)
         }
         break;
 
-    case DeviceEventType::kPlatformBouffaloBleCentralConnected: {
+    case DeviceEventType::kPlatformBflbBleCentralConnected: {
         const auto & connectionEvent = event->Platform.BleCentralConnectionEvent;
         bt_conn * connection         = connectionEvent.BtConn;
         if (connectionEvent.HciResult != BT_HCI_ERR_SUCCESS)
@@ -1240,7 +1231,7 @@ void BLEManagerImpl::_OnPlatformEvent(const ChipDeviceEvent * event)
         break;
     }
 
-    case DeviceEventType::kPlatformBouffaloBleCentralDisconnected: {
+    case DeviceEventType::kPlatformBflbBleCentralDisconnected: {
         const auto & connectionEvent = event->Platform.BleCentralConnectionEvent;
         bt_conn * connection         = connectionEvent.BtConn;
         const bool isCentralConnection = mCentralConnection == connection;
@@ -1278,7 +1269,7 @@ void BLEManagerImpl::_OnPlatformEvent(const ChipDeviceEvent * event)
         break;
     }
 
-    case DeviceEventType::kPlatformBouffaloBleCentralGattReady:
+    case DeviceEventType::kPlatformBflbBleCentralGattReady:
         if (event->Platform.BleCentralGattReadyEvent.Status != 0 || mCentralConnection == nullptr)
         {
             ChipLogError(Ble, "Matter GATT service discovery failed: status %u",
@@ -1293,7 +1284,7 @@ void BLEManagerImpl::_OnPlatformEvent(const ChipDeviceEvent * event)
         mCentralAppState = nullptr;
         break;
 
-    case DeviceEventType::kPlatformBouffaloBleCentralIndication: {
+    case DeviceEventType::kPlatformBflbBleCentralIndication: {
         const auto & dataEvent = event->Platform.BleCentralDataEvent;
         bt_conn * connection  = dataEvent.BtConn;
         if (dataEvent.Data == nullptr)
@@ -1317,7 +1308,7 @@ void BLEManagerImpl::_OnPlatformEvent(const ChipDeviceEvent * event)
         break;
     }
 
-    case DeviceEventType::kPlatformBouffaloBleCentralWriteComplete: {
+    case DeviceEventType::kPlatformBflbBleCentralWriteComplete: {
         const auto & dataEvent = event->Platform.BleCentralDataEvent;
         bt_conn * connection  = dataEvent.BtConn;
         mCentralWriteBuffer = nullptr;
@@ -1520,15 +1511,15 @@ ssize_t BLEManagerImpl::HandleRXWrite(struct bt_conn * conId, const struct bt_ga
     if (!packetBuf.IsNull())
     {
         // Arrange to post a CHIPoBLERXWriteEvent event to the CHIP queue.
-        event.Type                            = DeviceEventType::kPlatformZephyrBleC1WriteEvent;
+        event.Type                            = DeviceEventType::kPlatformBflbBleC1WriteEvent;
         event.Platform.BleC1WriteEvent.BtConn = bt_conn_ref(conId);
         event.Platform.BleC1WriteEvent.Data   = std::move(packetBuf).UnsafeRelease();
     }
 
-    // If we failed to allocate a buffer, post a kPlatformZephyrBleOutOfBuffersEvent event.
+    // If we failed to allocate a buffer, post a kPlatformBflbBleOutOfBuffersEvent event.
     else
     {
-        event.Type = DeviceEventType::kPlatformZephyrBleOutOfBuffersEvent;
+        event.Type = DeviceEventType::kPlatformBflbBleOutOfBuffersEvent;
     }
 
     PlatformMgr().PostEventOrDie(&event);
@@ -1545,7 +1536,7 @@ bool BLEManagerImpl::HandleTXCCCWrite(struct bt_conn * conId, const struct bt_ga
         return BT_GATT_ERR(BT_ATT_ERR_VALUE_NOT_ALLOWED);
     }
 
-    event.Type                             = DeviceEventType::kPlatformZephyrBleCCCWrite;
+    event.Type                             = DeviceEventType::kPlatformBflbBleCCCWrite;
     event.Platform.BleCCCWriteEvent.BtConn = bt_conn_ref(conId);
     event.Platform.BleCCCWriteEvent.Value  = value;
 
@@ -1558,7 +1549,7 @@ void BLEManagerImpl::HandleTXIndicated(struct bt_conn * conId, IndicationAttrTyp
 {
     ChipDeviceEvent event;
 
-    event.Type                              = DeviceEventType::kPlatformZephyrBleC2IndDoneEvent;
+    event.Type                              = DeviceEventType::kPlatformBflbBleC2IndDoneEvent;
     event.Platform.BleC2IndDoneEvent.BtConn = bt_conn_ref(conId);
     event.Platform.BleC2IndDoneEvent.Result = err;
 
@@ -1574,7 +1565,7 @@ void BLEManagerImpl::HandleConnect(struct bt_conn * conId, uint8_t err)
 #if CHIP_DEVICE_CONFIG_ENABLE_BOUFFALO_BLE_CENTRAL
     if (sInstance.mCentralState == CentralState::kConnecting && sInstance.mCentralConnection == conId)
     {
-        event.Type                                             = DeviceEventType::kPlatformBouffaloBleCentralConnected;
+        event.Type                                             = DeviceEventType::kPlatformBflbBleCentralConnected;
         event.Platform.BleCentralConnectionEvent.BtConn       = bt_conn_ref(conId);
         event.Platform.BleCentralConnectionEvent.HciResult    = err;
         PlatformMgr().PostEventOrDie(&event);
@@ -1586,7 +1577,7 @@ void BLEManagerImpl::HandleConnect(struct bt_conn * conId, uint8_t err)
     // Don't handle BLE connecting events when it is not related to CHIPoBLE
     VerifyOrExit(sInstance.mFlags.Has(Flags::kChipoBleGattServiceRegister), );
 
-    event.Type                            = DeviceEventType::kPlatformZephyrBleConnected;
+    event.Type                            = DeviceEventType::kPlatformBflbBleConnected;
     event.Platform.BleConnEvent.BtConn    = bt_conn_ref(conId);
     event.Platform.BleConnEvent.HciResult = err;
 
@@ -1605,7 +1596,7 @@ void BLEManagerImpl::HandleDisconnect(struct bt_conn * conId, uint8_t reason)
 #if CHIP_DEVICE_CONFIG_ENABLE_BOUFFALO_BLE_CENTRAL
     if (sInstance.mCentralState != CentralState::kIdle && sInstance.mCentralConnection == conId)
     {
-        event.Type                                          = DeviceEventType::kPlatformBouffaloBleCentralDisconnected;
+        event.Type                                          = DeviceEventType::kPlatformBflbBleCentralDisconnected;
         event.Platform.BleCentralConnectionEvent.BtConn    = bt_conn_ref(conId);
         event.Platform.BleCentralConnectionEvent.HciResult = reason;
         PlatformMgr().PostEventOrDie(&event);
@@ -1617,7 +1608,7 @@ void BLEManagerImpl::HandleDisconnect(struct bt_conn * conId, uint8_t reason)
     // Don't handle BLE disconnecting events when it is not related to CHIPoBLE
     VerifyOrExit(sInstance.mFlags.Has(Flags::kChipoBleGattServiceRegister), );
 
-    event.Type                            = DeviceEventType::kPlatformZephyrBleDisconnected;
+    event.Type                            = DeviceEventType::kPlatformBflbBleDisconnected;
     event.Platform.BleConnEvent.BtConn    = bt_conn_ref(conId);
     event.Platform.BleConnEvent.HciResult = reason;
 
@@ -1645,10 +1636,6 @@ ssize_t BLEManagerImpl::HandleC3Read(struct bt_conn * conId, const struct bt_gat
 }
 #endif
 
-extern "C" int ble_connection_number(void)
-{
-    return BLEMgr().NumConnections();
-}
 } // namespace Internal
 } // namespace DeviceLayer
 } // namespace chip

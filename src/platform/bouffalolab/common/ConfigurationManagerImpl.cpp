@@ -221,13 +221,14 @@ void ConfigurationManagerImpl::DoFactoryReset(intptr_t arg)
         ChipLogError(DeviceLayer, "FactoryResetConfig() failed: %" CHIP_ERROR_FORMAT, err.Format());
     }
 
-    // Restart the system.
-    ChipLogProgress(DeviceLayer, "System restarting");
-#if CHIP_DEVICE_LAYER_TARGET_BFLB
-    bl_sys_reset_por();
-#else
-    hal_reboot();
-#endif
+    // Wipe done. The reboot itself is a product decision: post the request
+    // and let the application layer decide whether and when to restart
+    // (examples/matter ChipEventHandler -> bl_sys_reset_por()).
+    ChipLogProgress(DeviceLayer, "Reboot requested (factory reset complete)");
+    ChipDeviceEvent event;
+    memset(&event, 0, sizeof(event));
+    event.Type = DeviceEventType::kPlatformBflbRebootRequest;
+    PlatformMgr().PostEventOrDie(&event);
 }
 
 #if CHIP_DEVICE_CONFIG_ENABLE_ETHERNET

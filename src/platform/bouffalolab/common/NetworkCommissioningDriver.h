@@ -25,6 +25,26 @@ namespace NetworkCommissioning {
 
 void NetworkEventHandler(const ChipDeviceEvent * event, intptr_t arg);
 
+/**
+ * Product hooks for the saved Wi-Fi network storage (SSID + credentials).
+ * Called by BflbWiFiDriver; the SDK Matter examples provide KV-store default
+ * implementations (examples/matter/common/matter/WifiSavedNetwork.cpp).
+ * Products may override them to keep the credentials elsewhere (MFD,
+ * secure file, cloud cache).
+ *
+ * - load:   called from Init; fills the kMaxWiFiSSIDLength /
+ *           kMaxWiFiKeyLength-sized output buffers.
+ * - store:  called on commit of a network.
+ * - delete: called on commit of an empty network; best effort and also
+ *           succeeds when nothing is stored.
+ *
+ * All hooks return 0 on success and non-zero on failure.
+ */
+extern "C" int bflb_matter_wifi_saved_network_load(char * ssid, uint8_t * ssidLen, char * credentials, uint8_t * credentialsLen);
+extern "C" int bflb_matter_wifi_saved_network_store(const char * ssid, uint8_t ssidLen, const char * credentials,
+                                                    uint8_t credentialsLen);
+extern "C" int bflb_matter_wifi_saved_network_delete(void);
+
 #if CHIP_DEVICE_CONFIG_ENABLE_WIFI
 namespace {
 inline constexpr uint8_t kMaxWiFiNetworks                  = 1;
@@ -140,6 +160,7 @@ public:
 
 private:
     bool NetworkMatch(const WiFiNetwork & network, ByteSpan networkId);
+    bool IsConnectedTo(const char * ssid, uint8_t ssidLen);
 
 #if CHIP_DEVICE_LAYER_TARGET_BL702
     WiFiScanResponse * mScanResponse = nullptr;

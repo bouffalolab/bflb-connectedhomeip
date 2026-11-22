@@ -17,22 +17,59 @@
 #include <stdint.h>
 #include <string.h>
 
-#include <lwip/ethip6.h>
-#include <lwip/dhcp6.h>
 #include <lwip/ip4_addr.h>
-#include <lwip/igmp.h>
 #include <lwip/ip6_addr.h>
-#include <lwip/nd6.h>
 #include <lwip/netif.h>
 #include <lwip/tcpip.h>
-#include <lwip/timeouts.h>
 #include <platform/CHIPDeviceLayer.h>
 #include <platform/bouffalolab/common/NetworkCommissioningDriver.h>
+// Wi-Fi glue merged from wifi_mgmr_portable.c (see the definitions below the
+// includes): the STA netif accessor shared with the SDK Matter examples'
+// backbone/route hooks and the platform managers, plus the SDK scan wrapper.
+// The Wi-Fi backend is selected by the SDK build (CONFIG_FHOST /
+// CONFIG_WL80211, mutually exclusive); both backends ship the manager
+// headers below with the same API and event codes.
+#if defined(CONFIG_FHOST) && defined(CONFIG_WL80211)
+#error "CONFIG_FHOST and CONFIG_WL80211 are mutually exclusive"
+#endif
+
 extern "C" {
 #undef IS_ENABLED
 #include <wifi_mgmr.h>
 #include <wifi_mgmr_ext.h>
-#include <wifi_mgmr_portable.h>
+#include <async_event.h>
+}
+
+extern "C" struct netif * deviceInterface_getNetif(void)
+{
+    // Public lwIP lookup by interface name: the SDK registers the STA as
+    // "wl1" on both Wi-Fi backends. Callers must not hold the TCP/IP core
+    // lock here (this getter takes it, and lwIP core locks do not recurse).
+    LOCK_TCPIP_CORE();
+    struct netif * net_if = netif_find("wl1");
+    UNLOCK_TCPIP_CORE();
+
+    return net_if;
+}
+
+// SDK scan wrapper for the Wi-Fi commissioning scan (file-local).
+static int wifi_start_scan(const uint8_t * ssid, uint32_t length)
+{
+    wifi_mgmr_scan_params_t config;
+
+    memset(&config, 0, sizeof(wifi_mgmr_scan_params_t));
+    if (length && length <= MGMR_SSID_LEN)
+    {
+#if defined(CONFIG_WL80211)
+        config.ssid_length = (uint8_t) length;
+        memcpy(config.ssid_array, ssid, length);
+#else
+        memcpy(config.ssid_array, ssid, length);
+        config.ssid_length = length;
+#endif
+    }
+
+    return wifi_mgmr_sta_scan(&config);
 }
 
 using namespace ::chip;
@@ -60,34 +97,73 @@ auto converter = [](const wifi_mgmr_scan_item_t & raw) -> WiFiScanResponse {
     return item;
 };
 
+// lwIP-side IP notification safety net (kGotIpv6Address / kGotIpAddress
+// ChipDeviceEvents); defined at the bottom of this file, registered below.
+extern "C" void matter_netif_ext_callback(struct netif * nif, netif_nsc_reason_t reason, const netif_ext_callback_args_t * args);
+
+// SDK-async-event -> ChipDeviceEvent adapter; defined at the bottom of this
+// file, subscribed on the EV_WIFI filter during driver init.
+extern "C" void wifi_event_handler(async_input_event_t ev, void * priv);
+
+static netif_ext_callback_t sMatterNetifExtCallback;
+
 CHIP_ERROR BflbWiFiDriver::Init(NetworkStatusChangeCallback * networkStatusChangeCallback)
 {
-    CHIP_ERROR err;
-    size_t ssidLen        = 0;
-    size_t credentialsLen = 0;
-
-    err = PersistedStorage::KeyValueStoreMgr().Get(BflbConfig::kConfigKey_WiFiPassword, mSavedNetwork.credentials,
-                                                   sizeof(mSavedNetwork.credentials), &credentialsLen);
-    SuccessOrExit(err);
-    err = PersistedStorage::KeyValueStoreMgr().Get(BflbConfig::kConfigKey_WiFiSSID, mSavedNetwork.ssid, sizeof(mSavedNetwork.ssid),
-                                                   &ssidLen);
-    SuccessOrExit(err);
-    mSavedNetwork.credentialsLen = credentialsLen;
-    mSavedNetwork.ssidLen        = ssidLen;
-
-    mStagingNetwork        = mSavedNetwork;
     mpScanCallback         = nullptr;
     mpConnectCallback      = nullptr;
     mpStatusChangeCallback = networkStatusChangeCallback;
 
-exit:
-    if (err == CHIP_ERROR_PERSISTED_STORAGE_VALUE_NOT_FOUND)
+    // The platform owns the registration of its own SDK-event adapter: the
+    // EV_WIFI filter feeds wifi_event_handler below. The examples'
+    // matter_wifi.c adds the manager auto-reconnect enabler on the same
+    // filter.
+    async_register_event_filter(EV_WIFI, wifi_event_handler, NULL);
+
+    // The lwIP core is up at this point (SDK SYSINIT). Register the netif
+    // notification so address changes that bypass the SDK async events are
+    // still reported to the Matter event loop.
+    LOCK_TCPIP_CORE();
+    netif_add_ext_callback(&sMatterNetifExtCallback, matter_netif_ext_callback);
+
+    // The station may have completed DHCP/RA before this registration (SDK
+    // SYSINIT with saved credentials): replay the current address state so
+    // the connectivity state machine starts from reality.
+    struct netif * staNetif = netif_find("wl1");
+    if (staNetif != NULL)
     {
-        /** Not commissioned, SSID and Network Password not found. */
+        if (!ip4_addr_isany(netif_ip4_addr(staNetif)) && !ip4_addr_isany(netif_ip4_gw(staNetif)))
+        {
+            ChipDeviceEvent event;
+            memset(&event, 0, sizeof(event));
+            event.Type = DeviceEventType::kGotIpAddress;
+            PlatformMgr().PostEventOrDie(&event);
+        }
+
+        for (int i = 0; i < LWIP_IPV6_NUM_ADDRESSES; i++)
+        {
+            if (!ip6_addr_islinklocal(netif_ip6_addr(staNetif, i)) && ip6_addr_ispreferred(netif_ip6_addr_state(staNetif, i)))
+            {
+                ChipDeviceEvent event;
+                memset(&event, 0, sizeof(event));
+                event.Type = DeviceEventType::kGotIpv6Address;
+                PlatformMgr().PostEventOrDie(&event);
+                break;
+            }
+        }
+    }
+    UNLOCK_TCPIP_CORE();
+
+    // Saved-network storage is a product decision (see
+    // bflb_matter_wifi_saved_network_load in NetworkCommissioningDriver.h).
+    if (bflb_matter_wifi_saved_network_load(mSavedNetwork.ssid, &mSavedNetwork.ssidLen, mSavedNetwork.credentials,
+                                            &mSavedNetwork.credentialsLen) != 0)
+    {
+        /** Not commissioned, SSID and Network Password not available. */
         return CHIP_NO_ERROR;
     }
 
-    return err;
+    mStagingNetwork = mSavedNetwork;
+    return CHIP_NO_ERROR;
 }
 
 void BflbWiFiDriver::Shutdown()
@@ -98,10 +174,21 @@ void BflbWiFiDriver::Shutdown()
 CHIP_ERROR BflbWiFiDriver::CommitConfiguration()
 {
     ChipLogProgress(NetworkProvisioning, "BflbWiFiDriver::CommitConfiguration");
-    ReturnErrorOnFailure(
-        PersistedStorage::KeyValueStoreMgr().Put(BflbConfig::kConfigKey_WiFiSSID, mStagingNetwork.ssid, mStagingNetwork.ssidLen));
-    ReturnErrorOnFailure(PersistedStorage::KeyValueStoreMgr().Put(BflbConfig::kConfigKey_WiFiPassword, mStagingNetwork.credentials,
-                                                                  mStagingNetwork.credentialsLen));
+
+    // Storage backend is a product decision (see the
+    // bflb_matter_wifi_saved_network_* hooks in NetworkCommissioningDriver.h):
+    // committing an empty SSID removes the saved network.
+    if (mStagingNetwork.ssidLen == 0)
+    {
+        VerifyOrReturnError(bflb_matter_wifi_saved_network_delete() == 0, CHIP_ERROR_PERSISTED_STORAGE_FAILED);
+    }
+    else
+    {
+        VerifyOrReturnError(bflb_matter_wifi_saved_network_store(mStagingNetwork.ssid, mStagingNetwork.ssidLen,
+                                                                 mStagingNetwork.credentials, mStagingNetwork.credentialsLen) == 0,
+                            CHIP_ERROR_PERSISTED_STORAGE_FAILED);
+    }
+
     mSavedNetwork = mStagingNetwork;
     return CHIP_NO_ERROR;
 }
@@ -160,6 +247,17 @@ Status BflbWiFiDriver::ReorderNetwork(ByteSpan networkId, uint8_t index, Mutable
 
 CHIP_ERROR BflbWiFiDriver::ConnectWiFiNetwork(const char * ssid, uint8_t ssidLen, const char * key, uint8_t keyLen)
 {
+    // Called both by ConnectNetwork (commissioning) and
+    // ConnectivityManagerImpl::ConnectProvisionedWiFiNetwork
+    // (auto-reconnect): skip the connect request when the station is
+    // already associated with this network, the SDK auto-reconnect owns
+    // such a link and a new attempt would only bounce it.
+    if (IsConnectedTo(ssid, ssidLen))
+    {
+        ChipLogProgress(NetworkProvisioning, "Already connected to SSID, skipping connect");
+        return CHIP_NO_ERROR;
+    }
+
     wifi_mgmr_sta_connect_params_t conn_param = { 0 };
 
     ConnectivityMgrImpl().ChangeWiFiStationState(ConnectivityManager::kWiFiStationState_Connecting);
@@ -222,6 +320,17 @@ void BflbWiFiDriver::ConnectNetwork(ByteSpan networkId, ConnectCallback * callba
     VerifyOrExit(NetworkMatch(mStagingNetwork, networkId), networkingStatus = Status::kNetworkIDNotFound);
     VerifyOrExit(mpConnectCallback == nullptr, networkingStatus = Status::kUnknownError);
     ChipLogProgress(NetworkProvisioning, "BL NetworkCommissioningDelegate: SSID: %s", NullTerminated(networkId).c_str());
+
+    // Skip the connect request when the station is already associated with
+    // this network: the SDK auto-reconnect owns such a link and a new
+    // connect attempt would only bounce it. The callback is resolved here
+    // (ConnectWiFiNetwork cannot: no ConnectCallback flows through it).
+    if (IsConnectedTo(mStagingNetwork.ssid, mStagingNetwork.ssidLen))
+    {
+        ChipLogProgress(NetworkProvisioning, "Already connected to SSID, skipping connect");
+        callback->OnResult(Status::kSuccess, CharSpan(), 0);
+        return;
+    }
 
     err               = ConnectWiFiNetwork(reinterpret_cast<const char *>(mStagingNetwork.ssid), mStagingNetwork.ssidLen,
                                            reinterpret_cast<const char *>(mStagingNetwork.credentials), mStagingNetwork.credentialsLen);
@@ -340,6 +449,18 @@ CHIP_ERROR GetConfiguredNetwork(Network & network)
     return CHIP_ERROR_INTERNAL;
 }
 
+bool BflbWiFiDriver::IsConnectedTo(const char * ssid, uint8_t ssidLen)
+{
+    if (ConnectivityManagerImpl().GetWiFiStationState() != ConnectivityManager::kWiFiStationState_Connected)
+    {
+        return false;
+    }
+
+    Network connectedNetwork;
+    return GetConfiguredNetwork(connectedNetwork) == CHIP_NO_ERROR && connectedNetwork.networkIDLen == ssidLen &&
+        memcmp(connectedNetwork.networkID, ssid, ssidLen) == 0;
+}
+
 void BflbWiFiDriver::OnNetworkStatusChange()
 {
     Network configuredNetwork;
@@ -417,43 +538,32 @@ void NetworkEventHandler(const ChipDeviceEvent * event, intptr_t arg)
 
     switch (event->Type)
     {
-    case kWiFiOnInitDone:
-        break;
-    case kWiFiOnScanDone:
+    case DeviceEventType::kWiFiOnScanDone:
         BflbWiFiDriver::GetInstance().OnScanWiFiNetworkDone();
         break;
-    case kWiFiOnConnecting:
+    case DeviceEventType::kWiFiOnConnecting:
         ConnectivityMgrImpl().ChangeWiFiStationState(ConnectivityManager::kWiFiStationState_Connecting);
         ConnectivityMgrImpl().OnConnectivityChanged(deviceInterface_getNetif());
         break;
-    case kWiFiOnConnected:
-#if defined(CONFIG_FHOST)
-        // The SDK's automatic station connect path can report association
-        // before starting its IPv4 DHCP client. Start it explicitly here so
-        // persisted networks also obtain an IPv4 address after reboot.
-        {
-            const int dhcpError = wifi_sta_dhcp_client_start(0);
-            if (dhcpError != 0)
-            {
-                ChipLogError(DeviceLayer, "Failed to start Wi-Fi DHCP client after association");
-            }
-        }
-#endif // CONFIG_FHOST
+    case DeviceEventType::kWiFiOnConnected:
         BflbWiFiDriver::GetInstance().OnNetworkStatusChange();
         break;
-    case kGotIpAddress:
+    case DeviceEventType::kGotIpAddress:
         ConnectivityMgrImpl().ChangeWiFiStationState(ConnectivityManagerImpl::kWiFiStationState_Connected);
         ConnectivityMgrImpl().OnConnectivityChanged(deviceInterface_getNetif());
         break;
-    case kGotIpv6Address:
+    case DeviceEventType::kGotIpv6Address:
         ConnectivityMgrImpl().ChangeWiFiStationState(ConnectivityManagerImpl::kWiFiStationState_Connected);
         ConnectivityMgrImpl().OnConnectivityChanged(deviceInterface_getNetif());
         break;
-    case kWiFiOnDisconnected:
+    case DeviceEventType::kWiFiOnDisconnected:
         if (ConnectivityManager::kWiFiStationState_Connecting == ConnectivityMgrImpl().GetWiFiStationState())
         {
             ConnectivityMgrImpl().ChangeWiFiStationState(ConnectivityManager::kWiFiStationState_Connecting_Failed);
         }
+        break;
+    case DeviceEventType::kPlatformBflbRebootRequest:
+        // Handled by the application layer, which owns the reboot decision.
         break;
     default:
         ChipLogProgress(DeviceLayer, "Undefined network commission event type %x.\r\n", event->Type);
@@ -461,100 +571,15 @@ void NetworkEventHandler(const ChipDeviceEvent * event, intptr_t arg)
     }
 }
 
-extern "C" void wifi_event_handler(async_input_event_t ev, void * priv)
-{
-    ChipDeviceEvent event;
-    uint32_t code = ev->code;
-
-    memset(&event, 0, sizeof(ChipDeviceEvent));
-
-    switch (code)
-    {
-    case CODE_WIFI_ON_INIT_DONE:
-#if defined(CONFIG_FHOST)
-        wifi_mgmr_init();
-#endif
-        break;
-    case CODE_WIFI_ON_MGMR_DONE:
-        wifi_mgmr_sta_autoconnect_enable();
-        break;
-    case CODE_WIFI_ON_SCAN_DONE:
-        event.Type = kWiFiOnScanDone;
-        PlatformMgr().PostEventOrDie(&event);
-        break;
-    case CODE_WIFI_ON_CONNECTING:
-        event.Type = kWiFiOnConnecting;
-        PlatformMgr().PostEventOrDie(&event);
-        break;
-    case CODE_WIFI_ON_CONNECTED:
-        event.Type = kWiFiOnConnected;
-        PlatformMgr().PostEventOrDie(&event);
-        break;
-    case CODE_WIFI_ON_GOT_IP:
-        event.Type = kGotIpAddress;
-        PlatformMgr().PostEventOrDie(&event);
-        break;
-    case CODE_WIFI_ON_GOT_IP6:
-        event.Type = kGotIpv6Address;
-        PlatformMgr().PostEventOrDie(&event);
-        break;
-    case CODE_WIFI_ON_DISCONNECT:
-        event.Type = kWiFiOnDisconnected;
-        PlatformMgr().PostEventOrDie(&event);
-        break;
-    default: {
-        ChipLogProgress(DeviceLayer, "[APP] [EVT] Unknown code %lu \r\n", code);
-    }
-    }
-}
-
-extern "C" void network_netif_ext_callback(struct netif * nif, netif_nsc_reason_t reason, const netif_ext_callback_args_t * args)
+// Matter notification netif callback: watches IP address changes and
+// posts kGotIpv6Address / kGotIpAddress ChipDeviceEvents. Registered by
+// the SDK Matter examples' Wi-Fi backbone (examples/matter/common/platform/matter_wifi.c).
+extern "C" void matter_netif_ext_callback(struct netif * nif, netif_nsc_reason_t reason,
+                                          const netif_ext_callback_args_t * args)
 {
     ChipDeviceEvent event;
 
     memset(&event, 0, sizeof(ChipDeviceEvent));
-
-#if defined(CONFIG_WL80211)
-    struct netif * staNetif = deviceInterface_getNetif();
-    const bool isStaNetifAdded = (reason & LWIP_NSC_NETIF_ADDED) && nif == staNetif;
-#else
-    const bool isStaNetifAdded = false;
-#endif
-    const bool isNetifStatusChanged = (reason & LWIP_NSC_STATUS_CHANGED) && args && !nif->ip6_autoconfig_enabled;
-
-#if defined(CONFIG_WL80211) && LWIP_IGMP
-    if ((isStaNetifAdded || isNetifStatusChanged) && !(nif->flags & NETIF_FLAG_IGMP))
-    {
-        // NETIF_ADDED runs after lwIP's initial IGMP setup, so start it here
-        // when enabling multicast on a netif supplied without the IGMP flag.
-        nif->flags |= NETIF_FLAG_IGMP;
-        const err_t error = igmp_start(nif);
-        if (error != ERR_OK)
-        {
-            nif->flags &= ~NETIF_FLAG_IGMP;
-            ChipLogError(DeviceLayer, "Failed to start IGMP: %d", error);
-        }
-    }
-#endif
-
-    if (isStaNetifAdded || isNetifStatusChanged)
-    {
-        nif->flags |= NETIF_FLAG_ETHERNET | NETIF_FLAG_MLD6;
-        nif->output_ip6 = ethip6_output;
-        netif_create_ip6_linklocal_address(nif, 1);
-        netif_set_ip6_autoconfig_enabled(nif, 1);
-#if defined(CONFIG_WL80211) && LWIP_IPV6_DHCP6
-        if (isStaNetifAdded)
-        {
-            err_t error = dhcp6_enable_stateless(nif);
-            if (error != ERR_OK)
-            {
-                ChipLogError(DeviceLayer, "Failed to enable stateless DHCPv6: %d", error);
-            }
-            nd6_restart_netif(nif);
-        }
-#endif
-    }
 
     if (((LWIP_NSC_IPV6_ADDR_STATE_CHANGED | LWIP_NSC_IPV6_SET) & reason) && args)
     {
@@ -572,7 +597,7 @@ extern "C" void network_netif_ext_callback(struct netif * nif, netif_nsc_reason_
 
         if (addressState != args->ipv6_addr_state_changed.old_state && ip6_addr_ispreferred(addressState))
         {
-            event.Type = kGotIpv6Address;
+            event.Type = DeviceEventType::kGotIpv6Address;
             PlatformMgr().PostEventOrDie(&event);
         }
     }
@@ -581,9 +606,48 @@ extern "C" void network_netif_ext_callback(struct netif * nif, netif_nsc_reason_
     {
         if (!ip4_addr_isany(netif_ip4_addr(nif)) && !ip4_addr_isany(netif_ip4_gw(nif)))
         {
-            event.Type = kGotIpAddress;
+            event.Type = DeviceEventType::kGotIpAddress;
             PlatformMgr().PostEventOrDie(&event);
         }
+    }
+}
+
+extern "C" void wifi_event_handler(async_input_event_t ev, void * priv)
+{
+    // Bridge only the SDK Wi-Fi events Matter consumes into the Matter
+    // event loop; registered on the EV_WIFI filter by BflbWiFiDriver::Init.
+    // IP-address notifications arrive via the lwIP netif callback
+    // (matter_netif_ext_callback, which reflects the actual netif state and
+    // also covers static addressing), and the SDK-flow steps (manager
+    // auto-reconnect enable) live in the examples' matter_wifi.c.
+    ChipDeviceEvent event;
+    (void) priv;
+
+    memset(&event, 0, sizeof(ChipDeviceEvent));
+
+    switch (ev->code)
+    {
+    case CODE_WIFI_ON_SCAN_DONE:
+        event.Type = DeviceEventType::kWiFiOnScanDone;
+        PlatformMgr().PostEventOrDie(&event);
+        break;
+    case CODE_WIFI_ON_CONNECTING:
+        event.Type = DeviceEventType::kWiFiOnConnecting;
+        PlatformMgr().PostEventOrDie(&event);
+        break;
+    case CODE_WIFI_ON_CONNECTED:
+        event.Type = DeviceEventType::kWiFiOnConnected;
+        PlatformMgr().PostEventOrDie(&event);
+        break;
+    case CODE_WIFI_ON_DISCONNECT:
+        event.Type = DeviceEventType::kWiFiOnDisconnected;
+        PlatformMgr().PostEventOrDie(&event);
+        break;
+    case DeviceEventType::kPlatformBflbRebootRequest:
+        // Handled by the application layer, which owns the reboot decision.
+        break;
+    default:
+        break;
     }
 }
 

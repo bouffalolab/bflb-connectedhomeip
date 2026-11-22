@@ -31,7 +31,23 @@ namespace DeviceEventType {
  */
 enum PublicPlatformSpecificEventTypes
 {
-    /* None currently defined */
+    // Wi-Fi commissioning events: posted by wifi_event_handler
+    // (NetworkCommissioningDriver.cpp) and consumed by NetworkEventHandler.
+    kWiFiOnInitDone = kRange_PublicPlatformSpecific,
+    kWiFiOnScanDone,
+    kWiFiOnConnecting,
+    kWiFiOnConnected,
+    kGotIpAddress,
+    kGotIpv6Address,
+    kWiFiOnDisconnected,
+
+    /**
+     * Posted by the platform when it requires a restart (factory-reset wipe
+     * complete, applied OTA image pending). The application layer receives
+     * this event through its own handler and owns the reboot decision
+     * itself (whether and when to restart).
+     */
+    kPlatformBflbRebootRequest,
 };
 
 /**
@@ -39,21 +55,21 @@ enum PublicPlatformSpecificEventTypes
  */
 enum InternalPlatformSpecificEventTypes
 {
-    kPlatformZephyrEvent = kRange_InternalPlatformSpecific,
-    kPlatformZephyrBleConnected,
-    kPlatformZephyrBleDisconnected,
-    kPlatformZephyrBleCCCWrite,
-    kPlatformZephyrBleC1WriteEvent,
-    kPlatformZephyrBleC2IndDoneEvent,
-    kPlatformZephyrBleOutOfBuffersEvent,
+    kPlatformBflbEvent = kRange_InternalPlatformSpecific,
+    kPlatformBflbBleConnected,
+    kPlatformBflbBleDisconnected,
+    kPlatformBflbBleCCCWrite,
+    kPlatformBflbBleC1WriteEvent,
+    kPlatformBflbBleC2IndDoneEvent,
+    kPlatformBflbBleOutOfBuffersEvent,
 #if CHIP_DEVICE_CONFIG_ENABLE_BOUFFALO_BLE_CENTRAL
-    kPlatformBouffaloBleCentralScanMatch,
-    kPlatformBouffaloBleCentralScanError,
-    kPlatformBouffaloBleCentralConnected,
-    kPlatformBouffaloBleCentralDisconnected,
-    kPlatformBouffaloBleCentralGattReady,
-    kPlatformBouffaloBleCentralIndication,
-    kPlatformBouffaloBleCentralWriteComplete,
+    kPlatformBflbBleCentralScanMatch,
+    kPlatformBflbBleCentralScanError,
+    kPlatformBflbBleCentralConnected,
+    kPlatformBflbBleCentralDisconnected,
+    kPlatformBflbBleCentralGattReady,
+    kPlatformBflbBleCentralIndication,
+    kPlatformBflbBleCentralWriteComplete,
 #endif
 };
 

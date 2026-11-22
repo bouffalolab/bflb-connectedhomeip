@@ -178,14 +178,17 @@ void ConnectivityManagerImpl::_OnWiFiStationProvisionChange(void)
 
 CHIP_ERROR ConnectivityManagerImpl::ConnectProvisionedWiFiNetwork(void)
 {
-    char ssid[64]  = { 0 };
-    char psk[64]   = { 0 };
-    size_t ssidLen = 0;
-    size_t pskLen  = 0;
+    char ssid[kMaxWiFiSSIDLength] = { 0 };
+    char psk[kMaxWiFiKeyLength]   = { 0 };
+    uint8_t ssidLen               = 0;
+    uint8_t pskLen                = 0;
 
-    ReturnErrorOnFailure(PersistedStorage::KeyValueStoreMgr().Get(BflbConfig::kConfigKey_WiFiSSID, (void *) ssid, 64, &ssidLen, 0));
-    ReturnErrorOnFailure(
-        PersistedStorage::KeyValueStoreMgr().Get(BflbConfig::kConfigKey_WiFiPassword, (void *) psk, 64, &pskLen, 0));
+    // Stored credentials come from the product storage hooks, like every
+    // other credentials consumer (not from the KV store directly).
+    if (NetworkCommissioning::bflb_matter_wifi_saved_network_load(ssid, &ssidLen, psk, &pskLen) != 0)
+    {
+        return CHIP_ERROR_INCORRECT_STATE;
+    }
 
     return NetworkCommissioning::BflbWiFiDriver::GetInstance().ConnectWiFiNetwork(ssid, ssidLen, psk, pskLen);
 }

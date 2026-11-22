@@ -395,27 +395,27 @@ void NetworkEventHandler(const ChipDeviceEvent * event, intptr_t arg)
 
     switch (event->Type)
     {
-    case kWiFiOnInitDone:
+    case DeviceEventType::kWiFiOnInitDone:
         break;
-    case kWiFiOnScanDone:
+    case DeviceEventType::kWiFiOnScanDone:
         BflbWiFiDriver::GetInstance().OnScanWiFiNetworkDone();
         break;
-    case kWiFiOnConnecting:
+    case DeviceEventType::kWiFiOnConnecting:
         ConnectivityMgrImpl().ChangeWiFiStationState(ConnectivityManager::kWiFiStationState_Connecting);
         ConnectivityMgrImpl().OnConnectivityChanged(deviceInterface_getNetif());
         break;
-    case kWiFiOnConnected:
+    case DeviceEventType::kWiFiOnConnected:
         BflbWiFiDriver::GetInstance().OnNetworkStatusChange();
         break;
-    case kGotIpAddress:
+    case DeviceEventType::kGotIpAddress:
         ConnectivityMgrImpl().ChangeWiFiStationState(ConnectivityManagerImpl::kWiFiStationState_Connected);
         ConnectivityMgrImpl().OnConnectivityChanged(deviceInterface_getNetif());
         break;
-    case kGotIpv6Address:
+    case DeviceEventType::kGotIpv6Address:
         ConnectivityMgrImpl().ChangeWiFiStationState(ConnectivityManagerImpl::kWiFiStationState_Connected);
         ConnectivityMgrImpl().OnConnectivityChanged(deviceInterface_getNetif());
         break;
-    case kWiFiOnDisconnected:
+    case DeviceEventType::kWiFiOnDisconnected:
         if (ConnectivityManager::kWiFiStationState_Connecting == ConnectivityMgrImpl().GetWiFiStationState())
         {
             ConnectivityMgrImpl().ChangeWiFiStationState(ConnectivityManager::kWiFiStationState_Connecting_Failed);
@@ -445,23 +445,23 @@ extern "C" void wifi_event_handler(uint32_t code)
     case CODE_WIFI_ON_MGMR_DONE:
         break;
     case CODE_WIFI_ON_SCAN_DONE:
-        event.Type = kWiFiOnScanDone;
+        event.Type = DeviceEventType::kWiFiOnScanDone;
         PlatformMgr().PostEventOrDie(&event);
         break;
     case CODE_WIFI_ON_CONNECTING:
-        event.Type = kWiFiOnConnecting;
+        event.Type = DeviceEventType::kWiFiOnConnecting;
         PlatformMgr().PostEventOrDie(&event);
         break;
     case CODE_WIFI_ON_CONNECTED:
-        event.Type = kWiFiOnConnected;
+        event.Type = DeviceEventType::kWiFiOnConnected;
         PlatformMgr().PostEventOrDie(&event);
         break;
     case CODE_WIFI_ON_GOT_IP:
-        event.Type = kGotIpAddress;
+        event.Type = DeviceEventType::kGotIpAddress;
         PlatformMgr().PostEventOrDie(&event);
         break;
     case CODE_WIFI_ON_DISCONNECT:
-        event.Type = kWiFiOnDisconnected;
+        event.Type = DeviceEventType::kWiFiOnDisconnected;
         PlatformMgr().PostEventOrDie(&event);
         break;
     default:
@@ -494,7 +494,7 @@ extern "C" void network_netif_ext_callback(struct netif * nif, netif_nsc_reason_
         if (netif_ip6_addr_state(nif, args->ipv6_addr_state_changed.addr_index) != args->ipv6_addr_state_changed.old_state &&
             ip6_addr_ispreferred(netif_ip6_addr_state(nif, args->ipv6_addr_state_changed.addr_index)))
         {
-            event.Type = kGotIpv6Address;
+            event.Type = DeviceEventType::kGotIpv6Address;
             PlatformMgr().PostEventOrDie(&event);
         }
     }

@@ -17,118 +17,19 @@
 
 #include <platform/internal/CHIPDeviceLayerInternal.h>
 
-#include <platform/OpenThread/OpenThreadUtils.h>
 #include <platform/ThreadStackManager.h>
 
 #include <platform/FreeRTOS/GenericThreadStackManagerImpl_FreeRTOS.hpp>
 #include <platform/OpenThread/GenericThreadStackManagerImpl_OpenThread.hpp>
 
-#include <lib/support/CHIPPlatformMemory.h>
-#include <lib/support/logging/CHIPLogging.h>
-
-#include <openthread/platform/entropy.h>
-
 #include <mbedtls/platform.h>
 
 #include <openthread_port.h>
-#include <utils_list.h>
-
-extern "C" {
-
-#if CHIP_DEVICE_LAYER_TARGET_BFLB
-#if defined(BL616)
-#include <bl616.h>
-#elif defined(BL616CL)
-#include <bl616cl.h>
-#elif defined(BL618DG)
-#include <bl618dg.h>
-#endif
-#include <bflb_irq.h>
-#include <bflb_mtimer.h>
-#else
-#if defined(BL702L)
-#include <bl702l.h>
-#elif defined(BL702)
-#include <bl702.h>
-#endif
-#include <bl_irq.h>
-#include <bl_timer.h>
-#ifdef CFG_PDS_ENABLE
-#include <bl_rtc.h>
-#endif
-#endif
-
-#include <lmac154.h>
-#include <lmac154_fpt.h>
-#include <zb_timer.h>
-}
 
 namespace chip {
 namespace DeviceLayer {
 
-using namespace ::chip::DeviceLayer::Internal;
-
 ThreadStackManagerImpl ThreadStackManagerImpl::sInstance;
-
-namespace Internal {
-
-#if !CHIP_DEVICE_LAYER_TARGET_BFLB && defined(CFG_PDS_ENABLE)
-static inline uint32_t GetRtcSymbolCounter()
-{
-    constexpr uint32_t kRtcFrequencyBits = 15;
-    constexpr uint32_t kRtcCounterMask   = (1UL << kRtcFrequencyBits) - 1;
-    constexpr uint32_t kSymbolsPerSecond = 1000000UL >> LMAC154_US_PER_SYMBOL_BITS;
-
-    uint64_t rtcCounter = bl_rtc_get_counter();
-    uint32_t seconds    = static_cast<uint32_t>(rtcCounter >> kRtcFrequencyBits);
-    uint32_t remainder  = static_cast<uint32_t>(rtcCounter & kRtcCounterMask);
-
-    return (seconds * kSymbolsPerSecond) +
-        (((remainder * kSymbolsPerSecond) + (1UL << (kRtcFrequencyBits - 1))) >> kRtcFrequencyBits);
-}
-#endif
-
-CHIP_ERROR InitThreadPlatform()
-{
-    lmac154_init();
-    lmac154_enableCoex();
-    lmac154_setStd2015Extra(true);
-    lmac154_setTxRetry(0);
-    lmac154_fptClear();
-
-    lmac154_setEnhAckWaitTime((LMAC154_AIFS + (6 + 39) * 2 + 20) << LMAC154_US_PER_SYMBOL_BITS);
-    lmac154_setRxStateWhenIdle(true);
-
-#if CHIP_DEVICE_LAYER_TARGET_BL702 || CHIP_DEVICE_LAYER_TARGET_BL702L
-    lmac154_setTxRxTransTime(0xA0);
-#endif
-
-#if CHIP_DEVICE_CONFIG_THREAD_FTD && ((CHIP_DEVICE_LAYER_TARGET_BFLB && defined(BL616)) || CHIP_DEVICE_LAYER_TARGET_BL702L)
-    lmac154_setFramePendingMode(LMAC154_FPT_ANY);
-#endif
-
-#if CHIP_DEVICE_LAYER_TARGET_BFLB
-    zb_timer_cfg(bflb_mtimer_get_time_us() >> LMAC154_US_PER_SYMBOL_BITS);
-#else
-#ifdef CFG_PDS_ENABLE
-    zb_timer_cfg(GetRtcSymbolCounter());
-#else
-    zb_timer_cfg(bl_timer_now_us64() >> LMAC154_US_PER_SYMBOL_BITS);
-#endif
-#endif
-    lmac154_disableRx();
-
-#if CHIP_DEVICE_LAYER_TARGET_BFLB
-    bflb_irq_attach(M154_INT_IRQn, (irq_callback) lmac154_getInterruptCallback(), nullptr);
-    bflb_irq_enable(M154_INT_IRQn);
-#else
-    bl_irq_register(M154_IRQn, (void *) lmac154_getInterruptCallback());
-    bl_irq_enable(M154_IRQn);
-#endif
-    return CHIP_NO_ERROR;
-}
-
-} // namespace Internal
 
 CHIP_ERROR ThreadStackManagerImpl::_InitThreadStack(void)
 {
@@ -168,6 +69,12 @@ void ThreadStackManagerImpl::FactoryResetThreadStack(void)
 
 } // namespace DeviceLayer
 } // namespace chip
+
+// The OpenThread port glue below implements CHIP's task ownership of the OT
+// stack: CHIP drives the OT task (GenericThreadStackManagerImpl_FreeRTOS)
+// and provides the lock/event plumbing the SDK openthread_port expects. The
+// 15.4 radio and platform-driver bring-up live in the SDK SYSINIT flow
+// (components/wireless/thread/openthread_port, ot_port_sysinit).
 
 using namespace ::chip::DeviceLayer;
 

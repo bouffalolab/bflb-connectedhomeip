@@ -18,39 +18,19 @@
 
 #include <crypto/CHIPCryptoPAL.h>
 #include <platform/internal/CHIPDeviceLayerInternal.h>
-#include <stdlib.h>
 
 #include <platform/FreeRTOS/SystemTimeSupport.h>
 #include <platform/PlatformManager.h>
-#include <platform/bouffalolab/common/DiagnosticDataProviderImpl.h>
-#include <platform/bouffalolab/common/NetworkCommissioningDriver.h>
+#include <platform/bouffalolab/common/BflbConfig.h>
 #include <platform/internal/GenericPlatformManagerImpl_FreeRTOS.ipp>
 
-#if CHIP_SYSTEM_CONFIG_USE_LWIP
-#include <lwip/tcpip.h>
-#endif
 
-#if CHIP_DEVICE_CONFIG_ENABLE_WIFI
-#include <wifi_mgmr_portable.h>
-#endif
 
-#if CHIP_DEVICE_CONFIG_ENABLE_THREAD
-#include <openthread_port.h>
-#include <platform/bouffalolab/common/ThreadStackManagerImpl.h>
-#include <utils_list.h>
-#endif
-
-#include <bflb_flash.h>
+// Board entropy source. The remaining platform services are owned elsewhere:
+// the partition table, RF calibration and lwIP/Wi-Fi bring-up run under the
+// SDK SYSINIT flow, and the examples wire their network backbones in main.c
+// before the stack init.
 #include <bflb_sec_trng.h>
-extern "C" {
-#include <partition.h>
-#if CHIP_DEVICE_CONFIG_ENABLE_ETHERNET
-#include <lwip_emac_start.h>
-#endif
-#if CHIP_DEVICE_CONFIG_ENABLE_WIFI || CHIP_DEVICE_CONFIG_ENABLE_THREAD
-#include <rfparam_adapter.h>
-#endif
-}
 
 namespace chip {
 namespace DeviceLayer {
@@ -64,43 +44,14 @@ static int app_entropy_source(void * data, unsigned char * output, size_t len, s
 
 CHIP_ERROR PlatformManagerImpl::_InitChipStack(void)
 {
-    // The embedded chip-tool command layer may recreate its controller factory
-    // for each shell invocation. Platform services (rfparam, lwIP, Wi-Fi and
-    // the generic FreeRTOS platform manager) are process-lifetime resources.
-    static bool sPlatformInitialized = false;
-    if (sPlatformInitialized)
-    {
-        return CHIP_NO_ERROR;
-    }
+    CHIP_ERROR err = CHIP_NO_ERROR;
 
-    CHIP_ERROR err  = CHIP_NO_ERROR;
-#if (CHIP_DEVICE_CONFIG_ENABLE_WIFI || CHIP_DEVICE_CONFIG_ENABLE_THREAD) && !defined(CONFIG_SYSINIT)
-    int iret_rfInit = -1;
-#endif
+    // Config-store bootstrap (littlefs namespace + interrupted
+    // factory-reset resume), before anything reads or writes config keys.
+    Internal::BflbConfig::Init();
 
-    pt_table_set_flash_operation(bflb_flash_erase, bflb_flash_write, bflb_flash_read);
-
-#if (CHIP_DEVICE_CONFIG_ENABLE_WIFI || CHIP_DEVICE_CONFIG_ENABLE_THREAD) && !defined(CONFIG_SYSINIT)
-    VerifyOrDieWithMsg(0 == (iret_rfInit = rfparam_init(0, NULL, 0)), DeviceLayer, "rfparam_init failed with %d", iret_rfInit);
-#endif
-
-#if CHIP_DEVICE_CONFIG_ENABLE_ETHERNET
-    // The SDK startup owns EMAC contexts, DMA pools, DHCP and PHY polling,
-    // and initializes lwIP itself. Do not start a second tcpip thread here.
-    VerifyOrReturnError(lwip_emac_start(nullptr, 0) == 0, CHIP_ERROR_INTERNAL);
-#elif CHIP_SYSTEM_CONFIG_USE_LWIP && !defined(CONFIG_SYSINIT)
-    tcpip_init(NULL, NULL);
-#endif
-
-#if CHIP_DEVICE_CONFIG_ENABLE_WIFI
-    wifi_start_firmware_task();
-#endif
-
-#if CHIP_DEVICE_CONFIG_ENABLE_THREAD
-    ReturnErrorOnFailure(Internal::InitThreadPlatform());
-    ot_alarmInit();
-    ot_radioInit();
-#endif // CHIP_DEVICE_CONFIG_ENABLE_THREAD
+    // The Thread radio/platform bring-up runs under SDK SYSINIT (the
+    // openthread_port ot_port_sysinit record), like the Wi-Fi/RF flow.
 
     ReturnErrorOnFailure(System::Clock::InitClock_RealTime());
 
@@ -111,7 +62,6 @@ CHIP_ERROR PlatformManagerImpl::_InitChipStack(void)
     // to finish the initialization process.
     err = Internal::GenericPlatformManagerImpl_FreeRTOS<PlatformManagerImpl>::_InitChipStack();
     SuccessOrExit(err);
-    sPlatformInitialized = true;
 
 exit:
     return err;

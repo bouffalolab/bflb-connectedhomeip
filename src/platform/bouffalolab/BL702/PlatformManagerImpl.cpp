@@ -31,11 +31,7 @@
 #include <platform/bouffalolab/BL702/wifi_mgmr_portable.h>
 #endif // CHIP_DEVICE_CONFIG_ENABLE_WIFI
 
-#if CHIP_DEVICE_CONFIG_ENABLE_THREAD
-#include <openthread_port.h>
-#include <platform/bouffalolab/common/ThreadStackManagerImpl.h>
-#include <utils_list.h>
-#endif
+
 
 #if CHIP_DEVICE_CONFIG_ENABLE_ETHERNET
 #include <platform/bouffalolab/BL702/EthernetInterface.h>
@@ -70,11 +66,7 @@ CHIP_ERROR PlatformManagerImpl::_InitChipStack(void)
     tcpip_init(NULL, NULL);
 #endif
 
-#if CHIP_DEVICE_CONFIG_ENABLE_THREAD
-    ReturnErrorOnFailure(Internal::InitThreadPlatform());
-    ot_alarmInit();
-    ot_radioInit();
-#endif // CHIP_DEVICE_CONFIG_ENABLE_THREAD
+    // The Thread bring-up runs under SDK SYSINIT (openthread_port ot_port_sysinit).
 
     err = chip::Crypto::add_entropy_source(app_entropy_source, NULL, 16);
     SuccessOrExit(err);

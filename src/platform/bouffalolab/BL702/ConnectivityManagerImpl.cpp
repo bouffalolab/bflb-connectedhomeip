@@ -113,7 +113,7 @@ extern "C" void wifiInterface_eventScanDone(struct netif * interface, netbus_fs_
     memset(&event, 0, sizeof(ChipDeviceEvent));
     NetworkCommissioning::BflbWiFiDriver::GetInstance().OnScanWiFiNetworkDone(pmsg);
 
-    event.Type = kWiFiOnScanDone;
+    event.Type = DeviceEventType::kWiFiOnScanDone;
     PlatformMgr().PostEventOrDie(&event);
 }
 #endif // CHIP_DEVICE_CONFIG_ENABLE_WIFI

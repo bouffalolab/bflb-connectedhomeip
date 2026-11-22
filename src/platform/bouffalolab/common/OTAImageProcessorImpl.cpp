@@ -19,6 +19,7 @@
 #include <app/clusters/ota-requestor/OTARequestorInterface.h>
 #include <lib/support/StringBuilder.h>
 
+
 extern "C" {
 #if CHIP_DEVICE_LAYER_TARGET_BFLB
 #include <bflb_ota.h>
@@ -229,12 +230,14 @@ void OTAImageProcessorImpl::HandleApply(intptr_t context)
     TEMPORARY_RETURN_IGNORED DeviceLayer::SystemLayer().StartTimer(
         System::Clock::Seconds32(OTA_AUTO_REBOOT_DELAY),
         [](Layer *, void *) {
-            ChipLogProgress(SoftwareUpdate, "Rebooting...");
-#if CHIP_DEVICE_LAYER_TARGET_BFLB
-            bl_sys_reset_por();
-#else
-            hal_reboot();
-#endif
+            // The reboot decision belongs to the application layer: request
+            // it through the platform event (handled by the example
+            // ChipEventHandler -> bl_sys_reset_por()).
+            ChipLogProgress(SoftwareUpdate, "Reboot requested (OTA apply done)");
+            chip::DeviceLayer::ChipDeviceEvent event;
+            memset(&event, 0, sizeof(event));
+            event.Type = chip::DeviceLayer::DeviceEventType::kPlatformBflbRebootRequest;
+            chip::DeviceLayer::PlatformMgr().PostEventOrDie(&event);
         },
         nullptr);
 }

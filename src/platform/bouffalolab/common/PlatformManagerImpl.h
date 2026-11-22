@@ -42,9 +42,6 @@ class PlatformManagerImpl final : public PlatformManager, public Internal::Gener
     friend Internal::GenericPlatformManagerImpl_FreeRTOS<PlatformManagerImpl>;
 #endif
 
-protected:
-    void _RunEventLoop(void);
-
 public:
     // ===== Platform-specific members that may be accessed directly by the application.
     System::Clock::Timestamp GetStartTime() { return mStartTime; }
@@ -64,8 +61,6 @@ private:
 #endif
 
     CHIP_ERROR _PostEvent(const ChipDeviceEvent * event);
-    // Application hook implemented by the Bouffalo example platform layer.
-    CHIP_ERROR PlatformInit(void);
     System::Clock::Timestamp mStartTime = System::Clock::kZero;
 
     static PlatformManagerImpl sInstance;
@@ -94,12 +89,6 @@ inline PlatformManager & PlatformMgr(void)
 inline PlatformManagerImpl & PlatformMgrImpl(void)
 {
     return PlatformManagerImpl::sInstance;
-}
-
-inline void PlatformManagerImpl::_RunEventLoop(void)
-{
-    TEMPORARY_RETURN_IGNORED PlatformInit();
-    Internal::GenericPlatformManagerImpl_FreeRTOS<PlatformManagerImpl>::_RunEventLoop();
 }
 
 } // namespace DeviceLayer

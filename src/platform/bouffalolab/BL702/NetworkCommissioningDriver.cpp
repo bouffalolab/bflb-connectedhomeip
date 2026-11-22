@@ -431,20 +431,20 @@ void NetworkEventHandler(const ChipDeviceEvent * event, intptr_t arg)
 
     switch (event->Type)
     {
-    case kWiFiOnInitDone:
+    case DeviceEventType::kWiFiOnInitDone:
         break;
-    case kWiFiOnConnected:
+    case DeviceEventType::kWiFiOnConnected:
         BflbWiFiDriver::GetInstance().OnNetworkStatusChange();
         break;
-    case kGotIpAddress:
+    case DeviceEventType::kGotIpAddress:
         ConnectivityMgrImpl().ChangeWiFiStationState(ConnectivityManagerImpl::kWiFiStationState_Connected);
         ConnectivityMgrImpl().OnConnectivityChanged(deviceInterface_getNetif());
         break;
-    case kGotIpv6Address:
+    case DeviceEventType::kGotIpv6Address:
         ConnectivityMgrImpl().ChangeWiFiStationState(ConnectivityManagerImpl::kWiFiStationState_Connected);
         ConnectivityMgrImpl().OnConnectivityChanged(deviceInterface_getNetif());
         break;
-    case kWiFiOnDisconnected:
+    case DeviceEventType::kWiFiOnDisconnected:
         if (ConnectivityManager::kWiFiStationState_Connecting == ConnectivityMgrImpl().GetWiFiStationState())
         {
             ConnectivityMgrImpl().ChangeWiFiStationState(ConnectivityManager::kWiFiStationState_Connecting_Failed);
@@ -464,15 +464,15 @@ extern "C" void wifi_event_handler(uint32_t code)
     switch (code)
     {
     case VIRT_NET_EV_ON_CONNECTED:
-        event.Type = kWiFiOnConnected;
+        event.Type = DeviceEventType::kWiFiOnConnected;
         PlatformMgr().PostEventOrDie(&event);
         break;
     case VIRT_NET_EV_ON_GOT_IP:
-        event.Type = kGotIpAddress;
+        event.Type = DeviceEventType::kGotIpAddress;
         PlatformMgr().PostEventOrDie(&event);
         break;
     case VIRT_NET_EV_ON_DISCONNECT:
-        event.Type = kWiFiOnDisconnected;
+        event.Type = DeviceEventType::kWiFiOnDisconnected;
         PlatformMgr().PostEventOrDie(&event);
         break;
     default:

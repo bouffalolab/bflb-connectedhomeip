@@ -15,9 +15,8 @@
  *    limitations under the License.
  */
 
-#include <lwip/dhcp6.h>
-#include <lwip/ethip6.h>
-#include <lwip/netifapi.h>
+#include <lwip/netif.h>
+#include <lwip/tcpip.h>
 
 #include <lib/support/SafePointerCast.h>
 #include <platform/CHIPDeviceLayer.h>
@@ -33,10 +32,28 @@ extern "C" struct netif * deviceInterface_getNetif(void)
     return netif_default;
 }
 
+#if CHIP_DEVICE_CONFIG_ENABLE_ETHERNET && !CHIP_DEVICE_CONFIG_ENABLE_WIFI
+// The BSP lwip_emac_start reads the factory MAC through the WLAN mfg-media
+// component, which Wi-Fi-less builds do not link. Provide the symbol so
+// the EMAC keeps its configured default MAC; products with a real MAC
+// source (factory data, an EEPROM, ...) should replace this.
+extern "C" int mfg_media_read_macaddr_with_lock(uint8_t mac[6], uint8_t reload)
+{
+    (void) mac;
+    (void) reload;
+    return -1;
+}
+#endif
+
 namespace chip {
 namespace DeviceLayer {
 namespace NetworkCommissioning {
 
+// Connectivity bridge for the Ethernet netif: feed link/status/address
+// changes into the Matter connectivity manager. The generic netif
+// configuration (IGMP, IPv6 autoconfig, DHCPv6) lives in the SDK Matter
+// examples' Wi-Fi backbone (examples/matter/common/platform/matter_wifi.c), which
+// covers the Ethernet netif as well.
 void network_netif_ext_callback(struct netif * nif, netif_nsc_reason_t reason, const netif_ext_callback_args_t * args)
 {
     if (nif != deviceInterface_getNetif())
@@ -58,6 +75,8 @@ CHIP_ERROR BflbEthernetDriver::Init(BaseDriver::NetworkStatusChangeCallback * ne
 
     LOCK_TCPIP_CORE();
     netif_add_ext_callback(&netifExtCallback, network_netif_ext_callback);
+    // Generic IPv6 bring-up for the EMAC netif (the Wi-Fi counterpart lives
+    // in the SDK examples' matter_wifi.c).
     netif_create_ip6_linklocal_address(netif, 1);
     netif_set_ip6_autoconfig_enabled(netif, 1);
     // DHCP may have completed before the Matter driver registered its callback.

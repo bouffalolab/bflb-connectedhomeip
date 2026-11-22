@@ -34,9 +34,6 @@
 
 extern "C" {
 #include <bl_sec.h>
-#if CHIP_DEVICE_CONFIG_ENABLE_THREAD
-#include <openthread_port.h>
-#endif
 }
 
 namespace chip {
@@ -62,11 +59,7 @@ CHIP_ERROR PlatformManagerImpl::_InitChipStack(void)
 {
     CHIP_ERROR err;
 
-#if CHIP_DEVICE_CONFIG_ENABLE_THREAD
-    ReturnErrorOnFailure(Internal::InitThreadPlatform());
-    ot_alarmInit();
-    ot_radioInit();
-#endif // CHIP_DEVICE_CONFIG_ENABLE_THREAD
+    // The Thread bring-up runs under SDK SYSINIT (openthread_port ot_port_sysinit).
 
 #if CHIP_SYSTEM_CONFIG_USE_LWIP
     // Initialize LwIP.
