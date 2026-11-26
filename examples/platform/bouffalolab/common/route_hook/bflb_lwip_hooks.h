@@ -3,6 +3,13 @@
 #include "lwip/arch.h"
 #include "lwip/err.h"
 #include "lwip/ip_addr.h"
+#include "lwip/ip6_addr.h"
+
+// Preserve the SDK's EAPOL delivery to WPA supplicant when this header wins
+// include-path lookup over the application's Wi-Fi hook header.
+#if defined(CONFIG_MACSW_LWIP)
+#include "lwiphooks.h"
+#endif
 
 extern struct netif * lwip_hook_ip6_route(const ip6_addr_t * src, const ip6_addr_t * dest);
 #define LWIP_HOOK_IP6_ROUTE lwip_hook_ip6_route

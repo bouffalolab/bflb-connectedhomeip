@@ -44,6 +44,9 @@
 #include <bflb_sec_trng.h>
 extern "C" {
 #include <partition.h>
+#if CHIP_DEVICE_CONFIG_ENABLE_ETHERNET
+#include <lwip_emac_start.h>
+#endif
 #if CHIP_DEVICE_CONFIG_ENABLE_WIFI || CHIP_DEVICE_CONFIG_ENABLE_THREAD
 #include <rfparam_adapter.h>
 #endif
@@ -61,6 +64,15 @@ static int app_entropy_source(void * data, unsigned char * output, size_t len, s
 
 CHIP_ERROR PlatformManagerImpl::_InitChipStack(void)
 {
+    // The embedded chip-tool command layer may recreate its controller factory
+    // for each shell invocation. Platform services (rfparam, lwIP, Wi-Fi and
+    // the generic FreeRTOS platform manager) are process-lifetime resources.
+    static bool sPlatformInitialized = false;
+    if (sPlatformInitialized)
+    {
+        return CHIP_NO_ERROR;
+    }
+
     CHIP_ERROR err  = CHIP_NO_ERROR;
     int iret_rfInit = -1;
 
@@ -70,7 +82,11 @@ CHIP_ERROR PlatformManagerImpl::_InitChipStack(void)
     VerifyOrDieWithMsg(0 == (iret_rfInit = rfparam_init(0, NULL, 0)), DeviceLayer, "rfparam_init failed with %d", iret_rfInit);
 #endif
 
-#if CHIP_SYSTEM_CONFIG_USE_LWIP
+#if CHIP_DEVICE_CONFIG_ENABLE_ETHERNET
+    // The SDK startup owns EMAC contexts, DMA pools, DHCP and PHY polling,
+    // and initializes lwIP itself. Do not start a second tcpip thread here.
+    VerifyOrReturnError(lwip_emac_start(nullptr, 0) == 0, CHIP_ERROR_INTERNAL);
+#elif CHIP_SYSTEM_CONFIG_USE_LWIP
     tcpip_init(NULL, NULL);
 #endif
 
@@ -93,6 +109,7 @@ CHIP_ERROR PlatformManagerImpl::_InitChipStack(void)
     // to finish the initialization process.
     err = Internal::GenericPlatformManagerImpl_FreeRTOS<PlatformManagerImpl>::_InitChipStack();
     SuccessOrExit(err);
+    sPlatformInitialized = true;
 
 exit:
     return err;

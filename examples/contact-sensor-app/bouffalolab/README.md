@@ -96,6 +96,27 @@ Build with Wi-Fi:
 make -C examples/contact-sensor-app/bouffalolab
 ```
 
+Use `BL_SDK_BASE` to select an SDK checkout and `CROSS_COMPILE` to select a
+compatible toolchain prefix (either a command prefix on `PATH` or an absolute
+path). Configuration prints the SDK compiler paths, ISA/ABI, and resolved Matter
+GN tool paths and versions.
+
+The `build_examples.py` entry point accepts the same exported `BL_SDK_BASE` and
+`CROSS_COMPILE` values. Use the SDK with build-local Kconfig generation
+(`generated/autoconfig.h`) and the compatible GCC 14.3/Picolibc toolchain; the
+older SDK 2.3.27 checkout does not provide this configuration pipeline.
+
+The SDK owns startup, final linking, and packaging. Matter GN artifacts are kept
+in the build directory's `matter-gn/` child directory and use that build's
+`generated/autoconfig.h`. Use a distinct absolute `BUILD_DIR` for each parallel
+build or configuration.
+Use a new build directory or run `clean` when changing the toolchain or CMake
+generator.
+
+SDK startup initializes libc TLS. The SDK's generic pre-main constructor
+wrapper is disabled for this example; `platform_port_init()` initializes the
+board, heap, console, and storage before running C++ global constructors once.
+
 #### Clean
 
 ```shell

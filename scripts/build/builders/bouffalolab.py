@@ -450,7 +450,7 @@ class BouffalolabBflbBuilder(Builder):
       CONFIG_WIFI / CONFIG_THREAD / CONFIG_ETHERNET  — network interface
       CONFIG_SHELL   — Matter interactive shell
       CONFIG_MFD     — factory data (chip_enable_factory_data)
-      OT_FTD         — 1=FTD (default), 0=MTD  (only when CONFIG_THREAD=y)
+      CONFIG_OT_FTD / CONFIG_OT_MTD — Thread device role
     """
 
     def __init__(self,
@@ -504,6 +504,7 @@ class BouffalolabBflbBuilder(Builder):
         args = [
             f'CHIP={self.chip_name}',
             f'BOARD={self.board_name}',
+            f'BL_SDK_BASE={self._sdk_base()}',
             f'CROSS_COMPILE={self._cross_compile_prefix()}',
             'CONFIG_WIFI=%s' % ('y' if self.enable_wifi else 'n'),
             'CONFIG_THREAD=%s' % ('y' if self.enable_thread else 'n'),
@@ -515,10 +516,21 @@ class BouffalolabBflbBuilder(Builder):
             'CONFIG_COREDUMP=%s' % ('y' if self.enable_debug_coredump else 'n'),
         ]
         if self.enable_thread and not self.enable_thread_ftd:
-            args.append('OT_FTD=0')
+            args.extend(['CONFIG_OT_FTD=n', 'CONFIG_OT_MTD=y'])
         return args
 
+    def _sdk_base(self):
+        return os.path.abspath(os.environ.get('BL_SDK_BASE') or os.path.join(
+            self.root, '..', '..', '..', 'third_party', 'bouffalolab', 'repo_bouffalo_sdk'))
+
     def _cross_compile_prefix(self):
+        explicit_prefix = os.environ.get('CROSS_COMPILE')
+        if explicit_prefix:
+            return explicit_prefix
+        # Match the SDK default and honor the user's PATH before legacy installs.
+        compiler = shutil.which('riscv64-unknown-elf-gcc')
+        if compiler:
+            return compiler[:-len('gcc')]
         sdk_root = os.environ.get('BOUFFALOLAB_SDK_ROOT')
         prefixes = []
         if sdk_root:
@@ -570,9 +582,6 @@ class BouffalolabBflbBuilder(Builder):
         # self.output_dir (set by the framework) is out/<target> and is used in
         # _post_build() for symlinks so the output layout matches GN builds.
         build_dir = self._sdk_build_dir()
-        stale_shared_build_dir = os.path.join(self.root, 'build', 'build_out')
-        if os.path.isdir(stale_shared_build_dir):
-            shutil.rmtree(stale_shared_build_dir)
         log.info('Building %s cmake-hybrid bflb at %s', self.chip_name, self.root)
         self._Execute(
             ['env', f'PATH={self._build_path()}',
@@ -613,54 +622,23 @@ class BouffalolabBflbBuilder(Builder):
             except OSError:
                 pass
 
-        # Generate flash.py that references the GN-style bin name.
+        # Flash SDK-packaged images using the SDK's generated configuration.
         matter_root = os.path.dirname(os.path.dirname(os.path.dirname(self.root)))
-        gen_script = os.path.join(matter_root, 'scripts', 'flashing', 'gen_flashing_script.py')
         flash_py_name = f'{app_prefix}.flash.py'
         flash_py_path = os.path.join(self.output_dir, flash_py_name)
-
-        flash_args = [
-            'python3', gen_script, 'bouffalolab',
-            '--chipname', chip_name,
-            '--baudrate', '2000000',
-            '--application', os.path.join(self.output_dir, f'{app_prefix}.bin'),
-            '--output', flash_py_path,
-        ]
-        if chip_name in ('bl616', 'bl616cl'):
-            config_dir = os.path.join(self.output_dir, 'config')
-            board_config = {
-                'bl616': ('bl_factory_params_IoTKitA_auto.dts', 'boot2_bl616_isp_release_v8.1.8.bin'),
-                'bl616cl': ('bl_factory_params_IoTKitA_auto.dts', 'boot2_bl616cl_isp_release_v8.2.1.bin'),
-            }[chip_name]
-            flash_args.extend([
-                '--config', os.path.join(self.output_dir, 'flash_prog_cfg.ini'),
-                '--pt', os.path.join(config_dir, 'partition_cfg_4M.toml'),
-                '--dts', os.path.join(config_dir, board_config[0]),
-                '--boot2', os.path.join(config_dir, board_config[1]),
-            ])
-
-        self._Execute(flash_args, title='Generating flash.py wrapper')
-
-        flashing_dir = os.path.join(matter_root, 'scripts', 'flashing')
-        for runtime in ('bouffalolab_firmware_utils.py', 'firmware_utils.py'):
-            shutil.copy2(os.path.join(flashing_dir, runtime), self.output_dir)
-
-        bl616_config = {
-            'bl616': ('bl616dk', 'boot2_bl616_isp_release_v8.1.8.bin'),
-            'bl616cl': ('bl616cldk', 'boot2_bl616cl_isp_release_v8.2.1.bin'),
-        }
-        if chip_name in bl616_config:
-            board_name, boot2_name = bl616_config[chip_name]
-            config_dir = os.path.join(self.output_dir, 'config')
-            os.makedirs(config_dir, exist_ok=True)
-            board_config_dir = os.path.join(
-                matter_root, 'third_party', 'bouffalolab', 'repo_bouffalo_sdk', 'bsp', 'board', board_name, 'config')
-            shutil.copy2(
-                os.path.join(matter_root, 'examples', 'platform', 'bouffalolab', 'bflb', 'flash_config',
-                             'partition_cfg_4M.toml'),
-                config_dir)
-            for config_file in ('bl_factory_params_IoTKitA_auto.dts', boot2_name):
-                shutil.copy2(os.path.join(board_config_dir, config_file), config_dir)
+        flash_command = ['make', '-C', self.root,
+                         f'BUILD_DIR={os.path.join(self.root, self._sdk_build_dir())}'] + self._make_args() + ['flash']
+        with open(flash_py_path, 'w') as script:
+            script.write('#!/usr/bin/env python3\n')
+            script.write('import argparse\nimport subprocess\n\n')
+            script.write('parser = argparse.ArgumentParser(description="Flash SDK-packaged Matter firmware")\n')
+            script.write('parser.add_argument("--port", required=True)\n')
+            script.write('parser.add_argument("--baudrate", type=int, default=2000000)\n')
+            script.write('args = parser.parse_args()\n')
+            script.write(f'command = {flash_command!r}\n')
+            script.write('command += [f"COMX={args.port}", f"BAUDRATE={args.baudrate}"]\n')
+            script.write('subprocess.run(command, check=True)\n')
+        os.chmod(flash_py_path, 0o755)
 
         rel = os.path.relpath(flash_py_path, matter_root)
         gn_bin_rel = os.path.relpath(os.path.join(self.output_dir, f'{app_prefix}.bin'), matter_root)

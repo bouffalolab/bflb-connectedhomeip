@@ -1,0 +1,25 @@
+# Application-level switches for the Matter contact-sensor example.
+
+mainmenu "Matter contact-sensor example configuration"
+
+config WIFI
+	bool "Matter over Wi-Fi"
+	default y
+
+config ETHERNET
+	bool "Matter over Ethernet"
+	default n
+
+config MFD
+	bool "Manufacturing data partition"
+	default y
+
+config CHIP_HEAP_MONITOR
+	bool "Matter heap monitor"
+	default n
+
+config CHIP_ROTATING_DEVICE_ID
+	bool "Matter rotating device ID"
+	default n
+
+source "$BL_SDK_BASE/Kconfig"

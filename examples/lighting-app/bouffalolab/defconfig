@@ -11,8 +11,6 @@ CONFIG_LITTLEFS                             = y
 CONFIG_FOTA                                 = y
 
 CONFIG_FREERTOS                             = y
-CONFIG_NEWLIB                               = n
-CONFIG_NEWLIB_STANDARD                      = n
 CONFIG_POSIX                                = n
 CONFIG_TLSF                                 = y
 
@@ -20,6 +18,7 @@ CONFIG_CONSOLE_UART_BAUDRATE                = 2000000
 CONFIG_NO_SHORT_ENUMS                       = y
 CONFIG_STDATOMIC                            = y
 CONFIG_MM_ENABLE_MIN_FREE_TRACKING          = y
+# Kconfig symbol: builds the SDK Matter MFD component
 CONFIG_MATTER                               = y
 
 CONFIG_MBEDTLS                             = y
@@ -58,12 +57,13 @@ ifneq ($(filter y,$(CONFIG_WIFI) $(CONFIG_THREAD)),)
   CONFIG_BLUETOOTH                         = y
   ifeq ($(CHIP),bl616)
     CONFIG_BTBLECONTROLLER_LIB             = ble1m0s1bredr0
+  else ifeq ($(CHIP),bl618dg)
+    CONFIG_BTBLECONTROLLER_LIB             = ble1m0s1bredr0
   else
     CONFIG_BTBLECONTROLLER_LIB             = m2s1
   endif
-  CONFIG_BL_SDK                            = y
+  CONFIG_BLE_USING_DYNAMIC_RAM             = 1
   CONFIG_BLE_USE_MAC2                      = n
-  CONFIG_BLE_USING_DYNAMIC_RAM             = y
   CONFIG_BT_OAD_SERVER                     = n
   CONFIG_BT_STACK_CLI                      = n
 endif

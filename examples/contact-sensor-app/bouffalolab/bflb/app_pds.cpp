@@ -445,7 +445,6 @@ static void set_cpu_bclk_80M_and_gate_clk(void)
     tmpVal = 0;
     tmpVal = BL_SET_REG_BITS_VAL(tmpVal, GLB_CGEN_S2_WIFI, 1);
     tmpVal = BL_SET_REG_BITS_VAL(tmpVal, GLB_CGEN_S1_EXT_EMI_MISC, 1);
-    tmpVal = BL_SET_REG_BITS_VAL(tmpVal, GLB_CGEN_S1_EXT_PIO, 1);
     BL_WR_REG(GLB_BASE, GLB_CGEN_CFG2, tmpVal);
 }
 

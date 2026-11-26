@@ -135,11 +135,16 @@
 #define LWIP_IGMP_TIMERS_ONDEMAND 1
 #define IPV6_TIMER_PRECISE_NEEDED 1
 
+/* Picolibc already defines errno through <errno.h>. Only provide the
+ * FreeRTOS thread-local binding when the selected libc does not. */
+#include <errno.h>
+#ifndef errno
 #ifdef __cplusplus
 extern "C" int * __errno(void);
 #else
 extern int * __errno(void);
 #endif
 #define errno (*__errno())
+#endif
 
 #endif /* LWIP_HDR_LWIPOPTS_H__ */

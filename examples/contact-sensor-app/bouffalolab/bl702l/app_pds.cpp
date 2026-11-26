@@ -134,6 +134,8 @@ extern "C" void vApplicationSleep(TickType_t xExpectedIdleTime)
     TickType_t sleepTime = app_pds_get_sleep_time(xExpectedIdleTime);
     btble_vApplicationSleepExt(sleepTime);
 
+    bl_irq_enable(M154_IRQn);
+
     extern BaseType_t TrapNetCounter, *pTrapNetCounter;
     if (app_pds_wakeup_source == PDS_WAKEUP_BY_RTC)
     {
@@ -219,6 +221,8 @@ static inline bool app_pds_is_thread_stack_idle(void)
 
 int app_pds_before_sleep_callback(void)
 {
+    bl_irq_disable(M154_IRQn);
+
     if (app_pds_is_thread_stack_idle())
     {
         bl_pds_set_psram_retention(1);
@@ -228,6 +232,8 @@ int app_pds_before_sleep_callback(void)
 
         return 0;
     }
+
+    bl_irq_enable(M154_IRQn);
 
     return -1;
 }

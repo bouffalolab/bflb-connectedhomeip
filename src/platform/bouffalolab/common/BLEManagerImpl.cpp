@@ -15,8 +15,6 @@
  *    limitations under the License.
  */
 
-#define __ZEPHYR__ 1
-#define CONFIG_EVENTFD 0
 #include <platform/internal/CHIPDeviceLayerInternal.h>
 
 #if CHIP_DEVICE_CONFIG_ENABLE_CHIPOBLE
@@ -93,7 +91,7 @@ CHIP_ERROR InitRandomStaticAddress()
     if (error)
     {
         ChipLogError(DeviceLayer, "Failed to create BLE address: %d", error);
-        return System::MapErrorZephyr(error);
+        return CHIP_ERROR_POSIX(-error);
     }
 
     error = bt_id_create(&addr, nullptr);
@@ -101,7 +99,7 @@ CHIP_ERROR InitRandomStaticAddress()
     if (error < 0)
     {
         ChipLogError(DeviceLayer, "Failed to create BLE identity: %d", error);
-        return System::MapErrorZephyr(error);
+        return CHIP_ERROR_POSIX(-error);
     }
 
     ChipLogProgress(DeviceLayer, "BLE address: %02X:%02X:%02X:%02X:%02X:%02X", addr.a.val[5], addr.a.val[4], addr.a.val[3],
@@ -257,7 +255,7 @@ CHIP_ERROR BLEManagerImpl::StartAdvertising(void)
         if (err != 0)
             ChipLogError(DeviceLayer, "Failed to register CHIPoBLE GATT service");
 
-        VerifyOrReturnError(err == 0, MapErrorZephyr(err));
+        VerifyOrReturnError(err == 0, CHIP_ERROR_POSIX(-err));
 
         mFlags.Set(Flags::kChipoBleGattServiceRegister);
     }
@@ -279,17 +277,17 @@ CHIP_ERROR BLEManagerImpl::StartAdvertising(void)
         // Generate new private BLE address
         bt_le_oob bleOobInfo;
         err = bt_le_oob_get_local(advParams.id, &bleOobInfo);
-        VerifyOrReturnError(err == 0, MapErrorZephyr(err));
+        VerifyOrReturnError(err == 0, CHIP_ERROR_POSIX(-err));
 #endif // CONFIG_BT_PRIVACY
     }
 
     // Restart advertising
     err = bt_le_adv_stop();
-    VerifyOrReturnError(err == 0, MapErrorZephyr(err));
+    VerifyOrReturnError(err == 0, CHIP_ERROR_POSIX(-err));
 
     err = bt_le_adv_start(&advParams, advertisingData, sizeof(advertisingData) / sizeof(advertisingData[0]), scanResponseDataPtr,
                           scanResponseDataLen);
-    VerifyOrReturnError(err == 0, MapErrorZephyr(err));
+    VerifyOrReturnError(err == 0, CHIP_ERROR_POSIX(-err));
 
     // Transition to the Advertising state...
     if (!mFlags.Has(Flags::kAdvertising))
@@ -321,7 +319,7 @@ CHIP_ERROR BLEManagerImpl::StartAdvertising(void)
 CHIP_ERROR BLEManagerImpl::StopAdvertising(void)
 {
     int err = bt_le_adv_stop();
-    VerifyOrReturnError(err == 0, MapErrorZephyr(err));
+    VerifyOrReturnError(err == 0, CHIP_ERROR_POSIX(-err));
 
     // Transition to the not Advertising state...
     if (mFlags.Has(Flags::kAdvertising))
@@ -395,7 +393,7 @@ CHIP_ERROR BLEManagerImpl::_SetDeviceName(const char * deviceName)
     }
 
     ChipLogDetail(DeviceLayer, "Device name set to: %s", StringOrNullMarker(deviceName));
-    return MapErrorZephyr(bt_set_name(deviceName));
+    return CHIP_ERROR_POSIX(-bt_set_name(deviceName));
 }
 
 CHIP_ERROR BLEManagerImpl::HandleGAPConnect(const ChipDeviceEvent * event)
@@ -629,7 +627,7 @@ uint16_t BLEManagerImpl::_NumConnections(void)
 CHIP_ERROR BLEManagerImpl::CloseConnection(BLE_CONNECTION_OBJECT conId)
 {
     ChipLogProgress(DeviceLayer, "Closing BLE GATT connection (ConnId %02x)", bt_conn_index((bt_conn *) conId));
-    return MapErrorZephyr(bt_conn_disconnect((bt_conn *) conId, BT_HCI_ERR_REMOTE_USER_TERM_CONN));
+    return CHIP_ERROR_POSIX(-bt_conn_disconnect((bt_conn *) conId, BT_HCI_ERR_REMOTE_USER_TERM_CONN));
 }
 
 uint16_t BLEManagerImpl::GetMTU(BLE_CONNECTION_OBJECT conId) const
@@ -674,7 +672,7 @@ CHIP_ERROR BLEManagerImpl::SendIndication(BLE_CONNECTION_OBJECT conId, const Chi
     params->len = static_cast<uint16_t>(pBuf->DataLength());
 
     status = bt_gatt_indicate(conId, params);
-    VerifyOrExit(status == 0, err = MapErrorZephyr(status));
+    VerifyOrExit(status == 0, err = CHIP_ERROR_POSIX(-status));
 
 exit:
     if (err != CHIP_NO_ERROR)

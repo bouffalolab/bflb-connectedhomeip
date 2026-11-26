@@ -48,6 +48,16 @@ endif()
 
 find_package(bouffalo_sdk REQUIRED HINTS $ENV{BL_SDK_BASE} ${BL_SDK_BASE})
 include(${EXAMPLES_PLAT_DIR}/bflb/bflb_common.cmake)
+bflb_defer_constructors_to_platform_init()
+
+if(BFLB_LWIP_DHCP_DEBUG STREQUAL "y")
+  # lwipopts_user.h gates DHCP_DEBUG on this SDK-wide compile definition.
+  sdk_add_compile_definitions(-DBL616_DHCP_DEBUG=1)
+endif()
+
+# GN owns only its child directory; SDK configuration remains build-local.
+set(MATTER_GN_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/matter-gn")
+set(_matter_sdk_config_header "${CMAKE_BINARY_DIR}/generated/autoconfig.h")
 
 # Use the Matter partition table when factory data is enabled so the SDK
 # post-processing step emits a partition.bin with the MFD partition.
@@ -66,11 +76,6 @@ if(_sdk_iface_opts)
 endif()
 sdk_add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-fno-use-cxa-atexit>)
 
-# Fix SDK options that conflict with the Matter application.
-get_target_property(_sdk_link_opts sdk_intf_lib INTERFACE_LINK_OPTIONS)
-list(REMOVE_ITEM _sdk_link_opts -nostartfiles)
-set_target_properties(sdk_intf_lib PROPERTIES INTERFACE_LINK_OPTIONS "${_sdk_link_opts}")
-
 # =============================================================================
 # Matter CMake Setup
 # =============================================================================
@@ -86,7 +91,7 @@ include(${CHIP_ROOT}/src/app/chip_data_model.cmake)
 
 # Extract SDK properties
 get_target_property(_sdk_opts sdk_intf_lib INTERFACE_COMPILE_OPTIONS)
-get_target_property(_sdk_defs sdk_intf_lib INTERFACE_COMPILE_DEFINITIONS)
+bflb_get_sdk_definitions(_sdk_defs)
 get_target_property(_sdk_incs sdk_intf_lib INTERFACE_INCLUDE_DIRECTORIES)
 
 # Convert SDK options to MATTER_CFLAGS (filter generator expressions)
@@ -131,6 +136,12 @@ list(FILTER MATTER_CFLAGS    EXCLUDE REGEX "^-Wno-unknown-warning-option$")
 list(FILTER MATTER_CFLAGS_C  EXCLUDE REGEX "^-Wno-unknown-warning-option$")
 list(FILTER MATTER_CFLAGS_CC EXCLUDE REGEX "^-Wno-unknown-warning-option$")
 
+# GCC 14 diagnoses lwIP NULL checks after separate preprocessing with
+# -save-temps. Keep the SDK's diagnostic option out of Matter compilation.
+foreach(_flags MATTER_CFLAGS MATTER_CFLAGS_C MATTER_CFLAGS_CC)
+  list(FILTER ${_flags} EXCLUDE REGEX "^-save-temps(=.*)?$")
+endforeach()
+
 # =============================================================================
 # Matter Flags
 # =============================================================================
@@ -154,8 +165,8 @@ list(APPEND MATTER_CFLAGS_CC
 list(APPEND MATTER_CFLAGS_C  -I${EXAMPLE_DIR}/bflb)
 list(APPEND MATTER_CFLAGS_CC -I${EXAMPLE_DIR}/bflb)
 
-list(APPEND MATTER_CFLAGS_C  -include ${CMAKE_BINARY_DIR}/generated/autoconf.h)
-list(APPEND MATTER_CFLAGS_CC -include ${CMAKE_BINARY_DIR}/generated/autoconf.h)
+list(APPEND MATTER_CFLAGS_C  -include ${_matter_sdk_config_header})
+list(APPEND MATTER_CFLAGS_CC -include ${_matter_sdk_config_header})
 
 list(APPEND MATTER_CFLAGS_C  -UMBEDTLS_NET_C)
 list(APPEND MATTER_CFLAGS_CC -UMBEDTLS_NET_C)
@@ -231,8 +242,25 @@ matter_add_gn_arg_bool("chip_enable_factory_data" CONFIG_MFD STREQUAL "y")
 matter_add_gn_arg_bool("chip_enable_additional_data_advertising" CONFIG_CHIP_ROTATING_DEVICE_ID STREQUAL "y")
 matter_add_gn_arg_bool("chip_enable_rotating_device_id"          CONFIG_CHIP_ROTATING_DEVICE_ID STREQUAL "y")
 
-matter_add_gn_arg_string("cross_compile" "${CROSS_COMPILE}")
+# The Matter library (GN) must use the same compiler family as the main
+# SDK build that links it. The SDK selects the compiler purely through
+# CROSS_COMPILE (BL616 defaults to riscv64-zephyr-elf-), so derive the GN
+# cross_compile from the compiler actually selected by the SDK toolchain
+# file.
+get_filename_component(_bflb_cc_name "${CMAKE_C_COMPILER}" NAME)
+string(REGEX REPLACE "gcc(-.*)?$" "" _bflb_gn_cross_compile "${_bflb_cc_name}")
+bflb_print_toolchain("${_bflb_gn_cross_compile}")
+matter_add_gn_arg_string("cross_compile" "${_bflb_gn_cross_compile}")
 matter_add_gn_arg_list("chip_project_config_include_dirs" "\"${EXAMPLE_DIR}/bflb\"")
+
+# Use the SDK's libc selection for GN too. Zephyr GCC defaults to Picolibc
+# and must not load picolibc.specs a second time.
+if(BFLB_USE_PICOLIBC)
+  if(BFLB_PICOLIBC_SPECS)
+    matter_add_flags(${BFLB_PICOLIBC_SPECS})
+  endif()
+  matter_add_flags(-D_DEFAULT_SOURCE)
+endif()
 
 bflb_remove_lto()
 
@@ -246,8 +274,7 @@ matter_common_gn_args(
 # GN Build
 # =============================================================================
 
-matter_generate_args_tmp_file()
-matter_build(chip)
+add_subdirectory(${EXAMPLES_PLAT_DIR}/bflb/matter-library ${MATTER_GN_BUILD_DIR})
 
 # =============================================================================
 # SDK Include Directories
@@ -261,6 +288,7 @@ sdk_add_include_directories(
   ${EXAMPLES_PLAT_DIR}/bflb
   ${EXAMPLES_PLAT_DIR}/common/bouffalo_sdk
   ${EXAMPLES_PLAT_DIR}/common/plat
+  ${BL_SDK_BASE}/components/wireless/matter/mfd/include
 )
 
 if(CONFIG_ETHERNET STREQUAL "y")
@@ -283,6 +311,9 @@ set(_COMMON_DEFS
   OTA_PERIODIC_TIMEOUT=14400
   BOUFFALOLAB_APP_NAME="chip-lighting-example"
 )
+if(CHIP STREQUAL "bl618dg" AND CONFIG_WIFI STREQUAL "y")
+  list(APPEND _COMMON_DEFS BOUFFALOLAB_ENABLE_BTBLE_COMBO_INIT=1)
+endif()
 if(CONFIG_WIFI STREQUAL "y")
   list(APPEND _COMMON_DEFS CHIP_DEVICE_CONFIG_ENABLE_WIFI=1)
   list(APPEND _COMMON_DEFS CHIP_DEVICE_CONFIG_ENABLE_CHIPOBLE=1)
@@ -330,7 +361,7 @@ target_include_directories(app PRIVATE
   ${EXAMPLES_PLAT_DIR}/common/route_hook
   ${CHIP_ROOT}/examples/providers
   ${CHIP_ROOT}/zzz_generated/app-common
-  ${CMAKE_CURRENT_BINARY_DIR}/gen/include
+  ${MATTER_GN_BUILD_DIR}/gen/include
 )
 
 if(CONFIG_SHELL STREQUAL "y")

@@ -4,10 +4,11 @@
 
 SDK_DEMO_PATH ?= $(abspath .)
 CHIP_ROOT      = ../../..
-BL_SDK_BASE    = ${CHIP_ROOT}/third_party/bouffalolab/repo_bouffalo_sdk
+BL_SDK_BASE   ?= ${CHIP_ROOT}/third_party/bouffalolab/repo_bouffalo_sdk
 export BL_SDK_BASE
 
-CROSS_COMPILE ?= riscv64-unknown-elf-
+# The SDK board.build selects the default riscv64-unknown-elf- Zephyr GCC
+# toolchain. Pass CROSS_COMPILE explicitly only for another compatible toolchain.
 
 # =============================================================================
 # Target Chip & Board
@@ -36,14 +37,16 @@ endif
 # Thread Configuration
 # =============================================================================
 
-CONFIG_OT_FTD ?= 1
-CONFIG_OT_MTD ?= 0
+# Values must be valid Kconfig bool assignments (y/n)
+CONFIG_OT_FTD ?= y
+CONFIG_OT_MTD ?= n
 
 # =============================================================================
 # Optional Features
 # =============================================================================
 
 CONFIG_SHELL                  ?= n
+BFLB_LWIP_DHCP_DEBUG          ?= n
 CONFIG_MFD                    ?= y
 CONFIG_CHIP_ROTATING_DEVICE_ID ?= n
 CONFIG_CHIP_HEAP_MONITOR       ?= n
@@ -56,6 +59,16 @@ CONFIG_COREDUMP                ?= n
 # Basic
 cmake_definition += -DCHIP_ROOT=${CHIP_ROOT}
 cmake_definition += -DBL_SDK_BASE=${BL_SDK_BASE}
+# CHIP/BOARD must resolve before find_package(bouffalo_sdk) loads the
+# generated configuration (the bouffalo_sdk >= 2.3.3x build does not pass
+# them on the cmake command line itself).
+cmake_definition += -DCHIP=${CHIP}
+cmake_definition += -DBOARD=${BOARD}
+# The bouffalo_sdk >= 2.3.3x wireless sub-builds compile the BLE controller
+# from source with the FreeRTOS port glue; their only application include
+# directory is the example root (SDK_DEMO_PATH). The FreeRTOS configuration
+# lives in bflb/, so propagate it to the sub-builds.
+cmake_definition += -DCMAKE_C_FLAGS=-I$(abspath bflb)
 
 # Network interface
 cmake_definition += -DCONFIG_WIFI=${CONFIG_WIFI}
@@ -64,6 +77,7 @@ cmake_definition += -DCONFIG_ETHERNET=${CONFIG_ETHERNET}
 
 # Optional features
 cmake_definition += -DCONFIG_SHELL=${CONFIG_SHELL}
+cmake_definition += -DBFLB_LWIP_DHCP_DEBUG=${BFLB_LWIP_DHCP_DEBUG}
 cmake_definition += -DCONFIG_MFD=${CONFIG_MFD}
 cmake_definition += -DCONFIG_CHIP_ROTATING_DEVICE_ID=${CONFIG_CHIP_ROTATING_DEVICE_ID}
 cmake_definition += -DCONFIG_CHIP_HEAP_MONITOR=${CONFIG_CHIP_HEAP_MONITOR}
@@ -76,15 +90,20 @@ ifeq ($(CONFIG_THREAD),y)
   cmake_definition += -DOPENTHREAD_PROJECT_CORE_CONFIG_FILE=\"openthread-core-proj-config.h\"
   cmake_definition += -DOPENTHREAD_CORE_CONFIG_PLATFORM_CHECK_FILE=\"openthread-core-platform-config-check.h\"
   ifeq ($(CONFIG_SHELL),y)
-    cmake_definition += -DCONFIG_OT_CLI=shell
-    cmake_definition += -DCONFIG_SHELL_CMD_SIZE=256
+    # SDK configuration is generated from Make CONFIG_* variables. CMake-only
+    # values are overwritten when generated/autoconfig.cmake is loaded.
+    CONFIG_OT_CLI = shell
+    CONFIG_SHELL_CMD_SIZE = 256
   endif
 endif
 
 # Ethernet-specific: eth_phy and lwip EMAC driver, needed by NetworkCommissioningEthernetDriver
 ifeq ($(CONFIG_ETHERNET),y)
-  cmake_definition += -DCONFIG_BSP_ETH_PHY=y
-  cmake_definition += -DCONFIG_BSP_LWIP_NETIF_EMAC=y
+  CONFIG_BSP_ETH_PHY = y
+  CONFIG_BSP_LWIP_NETIF_EMAC = y
+  CONFIG_BSP_LWIP_EMAC_START = y
+  # SDK EMAC startup reads the factory MAC through the RF manufacturing API.
+  CONFIG_RF = y
 endif
 
 # =============================================================================

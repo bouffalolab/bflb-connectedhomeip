@@ -64,13 +64,14 @@ private:
 #endif
 
     CHIP_ERROR _PostEvent(const ChipDeviceEvent * event);
+    // Application hook implemented by the Bouffalo example platform layer.
+    CHIP_ERROR PlatformInit(void);
     System::Clock::Timestamp mStartTime = System::Clock::kZero;
 
     static PlatformManagerImpl sInstance;
 
     using Internal::GenericPlatformManagerImpl_FreeRTOS<PlatformManagerImpl>::PostEventFromISR;
 
-    CHIP_ERROR PlatformInit(void);
 };
 
 /**

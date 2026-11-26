@@ -23,6 +23,10 @@
 
 #define OPENTHREAD_CONFIG_PLATFORM_INFO "BL616"
 
+// Matter and OpenThread share the SDK mbedTLS instance and its system allocator.
+// OpenThread must not replace the allocator of this shared library.
+#define OPENTHREAD_CONFIG_ENABLE_BUILTIN_MBEDTLS_MANAGEMENT 0
+
 // #define OPENTHREAD_CONFIG_LOG_LEVEL OT_LOG_LEVEL_DEBG
 #define OPENTHREAD_CONFIG_LOG_PKT_DUMP 0
 #define OPENTHREAD_CONFIG_PLATFORM_ASSERT_MANAGEMENT 1

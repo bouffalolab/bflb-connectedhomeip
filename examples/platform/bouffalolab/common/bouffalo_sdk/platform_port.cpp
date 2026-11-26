@@ -19,10 +19,6 @@
 #include <FreeRTOS.h>
 #include <task.h>
 
-#if CHIP_DEVICE_CONFIG_ENABLE_ETHERNET
-#include <eth_phy_port.h>
-#endif
-
 extern "C" {
 #include <bflb_mtd.h>
 #include <bl_sys.h>
@@ -48,12 +44,9 @@ void platform_port_init(void)
 
     app_pre_matter_init();
 
+    // Run global constructors once, after the SDK allocator and console exist.
+    // The SDK's pre-main constructor wrapper is disabled for these examples.
     __libc_init_array();
-
-#if CHIP_DEVICE_CONFIG_ENABLE_ETHERNET
-    board_emac_rmii_gpio_init(BSP_EMAC_RMII_DEFAULT_PORT);
-    board_emac_mdio_gpio_init(BSP_EMAC_MDIO_DEFAULT_PORT);
-#endif
 }
 
 extern "C" void vAssertCalled(void)

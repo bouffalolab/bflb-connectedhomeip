@@ -65,6 +65,10 @@
 #include <platform/bouffalolab/BL702/wifi_mgmr_portable.h>
 #endif
 #include <platform/bouffalolab/common/NetworkCommissioningDriver.h>
+
+#if defined(BOUFFALOLAB_ENABLE_BTBLE_COMBO_INIT)
+extern "C" void cmd_set_btble_combo(int argc, char ** argv);
+#endif
 #endif
 
 #include <app/clusters/network-commissioning/network-commissioning.h>
@@ -237,6 +241,11 @@ CHIP_ERROR PlatformManagerImpl::PlatformInit(void)
 
     ChipLogProgress(NotSpecified, "Initializing CHIP stack");
     ReturnLogErrorOnFailure(PlatformMgr().InitChipStack());
+
+#if defined(BOUFFALOLAB_ENABLE_BTBLE_COMBO_INIT) && CHIP_DEVICE_CONFIG_ENABLE_CHIPOBLE
+    // Match the BL618DG SDK board RF setup for concurrent Wi-Fi/BLE operation.
+    cmd_set_btble_combo(0, nullptr);
+#endif
 
     TEMPORARY_RETURN_IGNORED chip::DeviceLayer::ConnectivityMgr().SetBLEDeviceName(CHIP_BLE_DEVICE_NAME);
 

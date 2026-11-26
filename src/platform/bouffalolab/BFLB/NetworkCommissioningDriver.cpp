@@ -492,9 +492,6 @@ extern "C" void network_netif_ext_callback(struct netif * nif, netif_nsc_reason_
         nif->output_ip6 = ethip6_output;
         netif_create_ip6_linklocal_address(nif, 1);
         nif->ip6_autoconfig_enabled = 1;
-#if IPV6_TIMER_PRECISE_NEEDED
-        ipv6_timer_switch(1);
-#endif
     }
 
     if (((LWIP_NSC_IPV6_ADDR_STATE_CHANGED | LWIP_NSC_IPV6_SET) & reason) && args)
